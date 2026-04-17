@@ -9,10 +9,10 @@ import matplotlib.pyplot as plt
 import folium
 from streamlit_folium import st_folium
 import io, smtplib, base64
-from email.mime.multipart import MIMEMultipart
-from email.mime.text      import MIMEText
-from email.mime.base      import MIMEBase
-from email                import encoders
+# REMOVED: from email.mime.multipart import MIMEMultipart
+# REMOVED: from email.mime.text      import MIMEText
+# REMOVED: from email.mime.base      import MIMEBase
+# REMOVED: from email                import encoders
 from datetime             import datetime
 
 st.set_page_config(
@@ -20,8 +20,6 @@ st.set_page_config(
     page_icon="🏭", layout="wide",
     initial_sidebar_state="expanded",
 )
-
-TEACHER_EMAIL = "samarkhanov_kb@enu.kz"
 
 # ── CSS ───────────────────────────────────────────────────────────
 st.markdown("""
@@ -200,7 +198,7 @@ SECTOR_COLOR = {
     "Тау-кен (полимет.)":    "pink",
     "Машина жасау":          "red",
     "Тамақ өнеркәсібі":      "lightgreen",
-    "Уран өндіру":           "white",
+    "Уран өндіру":           "lightred",
     "Құрылыс материалдары":  "lightred",
 }
 
@@ -368,37 +366,208 @@ def build_html_report(name, group, region, score, grade, breakdown, df, ss, char
 
 
 # ══════════════════════════════════════════════════════════════════
-# EMAIL
+# PDF ЕСЕП  (fpdf2 + DejaVu шрифты — Кириллица + Қазақ символдары)
 # ══════════════════════════════════════════════════════════════════
-def send_email(name, group, score, grade, word_b, filename):
+def build_pdf_report(name, group, region, score, grade, breakdown, df, ss, chart_b):
+    """
+    Returns dict: {"pdf": bytes, "html": bytes}
+    PDF → fpdf2 + DejaVu (Cyrillic/Kazakh support)
+    HTML → build_html_report (fallback + standalone copy)
+    """
+    html_bytes = build_html_report(name, group, region, score, grade,
+                                   breakdown, df, ss, chart_b)
+    # PDF generation
     try:
-        cfg=st.secrets.get("email",{})
-        sender=cfg.get("sender",""); passwd=cfg.get("password","")
-        if not sender or not passwd:
-            return False,("❌ Email баптанбаған.\nStreamlit Cloud → Settings → Secrets:\n\n"
-                          "[email]\nsender = \"bot@gmail.com\"\npassword = \"xxxx xxxx xxxx xxxx\"")
-        msg=MIMEMultipart()
-        msg["From"]=sender; msg["To"]=TEACHER_EMAIL
-        msg["Subject"]=(f"[ГеоПрактика] {name or 'Студент'} · "
-                        f"{group or '—'} · {score}/100 · "
-                        f"{datetime.now().strftime('%Y-%m-%d %H:%M')}")
-        body=(f"Сәлем, Қанат Берікұлы!\n\nСтудент жұмысты аяқтады.\n\n"
-              f"Студент: {name or '—'}\nТоп: {group or '—'}\n"
-              f"Балл: {score}/100\nБаға: {grade}\n"
-              f"Күн: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
-              f"Word есеп тіркемеде.")
-        msg.attach(MIMEText(body,"plain","utf-8"))
-        part=MIMEBase("application","octet-stream"); part.set_payload(word_b)
-        encoders.encode_base64(part)
-        part.add_header("Content-Disposition",f'attachment; filename="{filename}"')
-        msg.attach(part)
-        with smtplib.SMTP_SSL("smtp.gmail.com",465,timeout=15) as s:
-            s.login(sender,passwd); s.sendmail(sender,TEACHER_EMAIL,msg.as_string())
-        return True,f"✅ Есеп {TEACHER_EMAIL} мекенжайына жіберілді!"
-    except smtplib.SMTPAuthenticationError:
-        return False,"❌ Gmail аутентификация қатесі. App Password тексеріңіз."
+        from fpdf import FPDF
+        import os
+
+        # DejaVu TTF путтары (Ubuntu / Streamlit Cloud)
+        FONT_R = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+        FONT_B = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+        HAS_FONT = os.path.exists(FONT_R) and os.path.exists(FONT_B)
+
+        class PDF(FPDF):
+            def header(self): pass
+            def footer(self):
+                self.set_y(-13)
+                if HAS_FONT:
+                    self.set_font("F", size=8)
+                else:
+                    self.set_font("Helvetica", size=8)
+                self.set_text_color(150, 150, 150)
+                self.cell(0, 10,
+                          f"Индустриялық Қазақстан практика жүйесі  ·  "
+                          f"{datetime.now().strftime('%Y-%m-%d %H:%M')}  ·  "
+                          f"Бет {self.page_no()}", align="C")
+
+        pdf = PDF(orientation="P", unit="mm", format="A4")
+        pdf.set_auto_page_break(auto=True, margin=18)
+        pdf.add_page()
+        pdf.set_margins(18, 15, 18)
+
+        if HAS_FONT:
+            pdf.add_font("F",  style="",  fname=FONT_R)
+            pdf.add_font("F",  style="B", fname=FONT_B)
+            FN = "F"
+        else:
+            FN = "Helvetica"   # без кириллицы
+
+        # ── Шапка ────────────────────────────────────────────────
+        pdf.set_fill_color(27, 42, 74)
+        pdf.rect(0, 0, 210, 32, "F")
+        pdf.set_text_color(255, 213, 102)
+        pdf.set_font(FN, "B", 16)
+        pdf.set_xy(18, 8)
+        pdf.cell(0, 8, "ИНДУСТРИЯЛЫҚ ҚАЗАҚСТАН", ln=True)
+        pdf.set_font(FN, "", 11)
+        pdf.set_x(18)
+        pdf.cell(0, 7, "Практикалық жұмыс есебі — 2-курс, географиялық педагогика", ln=True)
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(6)
+
+        # ── Студент ақпараты ──────────────────────────────────────
+        pdf.set_font(FN, "B", 12)
+        pdf.set_fill_color(240, 244, 255)
+        pdf.cell(0, 8, "1. Студент ақпараты және нәтиже", ln=True, fill=True)
+        pdf.ln(2)
+
+        pdf.set_font(FN, "", 10)
+        col_w = [55, 120]
+        rows_info = [
+            ("Студент",    name  or "—"),
+            ("Топ",        group or "—"),
+            ("Өңір",       region),
+            ("Күні",       datetime.now().strftime("%Y-%m-%d %H:%M")),
+            ("Жалпы балл", f"{score} / 100"),
+            ("Баға",       grade),
+        ]
+        for k, v in rows_info:
+            pdf.set_font(FN, "B", 10)
+            pdf.cell(col_w[0], 7, k, border=1)
+            pdf.set_font(FN, "", 10)
+            pdf.cell(col_w[1], 7, v, border=1, ln=True)
+
+        # Score box
+        pdf.ln(4)
+        pdf.set_fill_color(27, 42, 74)
+        pdf.set_text_color(255, 213, 102)
+        pdf.set_font(FN, "B", 28)
+        pdf.cell(50, 18, f"{score}", align="C", fill=True)
+        pdf.set_font(FN, "", 11)
+        pdf.set_text_color(255, 255, 255)
+        pdf.cell(50, 18, "/ 100", fill=True, align="C")
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(22)
+
+        # ── Балл кестесі ─────────────────────────────────────────
+        pdf.set_font(FN, "B", 12)
+        pdf.set_fill_color(240, 244, 255)
+        pdf.cell(0, 8, "2. Балл кестесі", ln=True, fill=True)
+        pdf.ln(2)
+        hdrs = ["Бөлім", "Балл", "Макс", "%"]
+        wds  = [100, 22, 22, 22]
+        pdf.set_font(FN, "B", 9)
+        pdf.set_fill_color(27, 42, 74); pdf.set_text_color(255, 213, 102)
+        for h, w in zip(hdrs, wds):
+            pdf.cell(w, 7, h, border=1, fill=True)
+        pdf.ln()
+        pdf.set_text_color(0,0,0)
+        for i, (crit, (e, m)) in enumerate(breakdown.items()):
+            pct = e/m*100 if m else 0
+            pdf.set_fill_color(248, 249, 250) if i%2==0 else pdf.set_fill_color(255,255,255)
+            pdf.set_font(FN, "", 9)
+            pdf.cell(wds[0], 6, crit, border=1, fill=True)
+            pdf.cell(wds[1], 6, str(e), border=1, fill=True, align="C")
+            pdf.cell(wds[2], 6, str(m), border=1, fill=True, align="C")
+            pdf.cell(wds[3], 6, f"{pct:.0f}%", border=1, fill=True, align="C")
+            pdf.ln()
+        pdf.ln(4)
+
+        # ── Деректер кестесі ──────────────────────────────────────
+        pdf.set_font(FN, "B", 12)
+        pdf.set_fill_color(240, 244, 255)
+        pdf.cell(0, 8, "3. Деректер кестесі", ln=True, fill=True)
+        pdf.ln(2)
+        if df is not None and not df.empty:
+            d_cols = ["Кәсіпорын","Сала","Өнім_мың_т","Жұмысшы_мың","Ластану_коэф","Экожүктеме"]
+            d_cols = [c for c in d_cols if c in df.columns]
+            d_wds  = [52, 38, 22, 22, 18, 20][:len(d_cols)]
+            pdf.set_font(FN, "B", 8)
+            pdf.set_fill_color(27,42,74); pdf.set_text_color(255,213,102)
+            for h,w in zip(d_cols,d_wds):
+                pdf.cell(w, 6, h[:14], border=1, fill=True)
+            pdf.ln()
+            pdf.set_text_color(0,0,0)
+            for i, (_, row) in enumerate(df[d_cols].iterrows()):
+                pdf.set_fill_color(248,249,250) if i%2==0 else pdf.set_fill_color(255,255,255)
+                pdf.set_font(FN, "", 8)
+                for val, w in zip(row, d_wds):
+                    txt = str(val)[:18]
+                    pdf.cell(w, 5.5, txt, border=1, fill=True)
+                pdf.ln()
+        pdf.ln(4)
+
+        # ── Диаграмма ─────────────────────────────────────────────
+        if chart_b:
+            pdf.add_page()
+            pdf.set_font(FN, "B", 12)
+            pdf.set_fill_color(240, 244, 255)
+            pdf.cell(0, 8, "4. Диаграммалар", ln=True, fill=True)
+            pdf.ln(3)
+            chart_io = io.BytesIO(chart_b)
+            pdf.image(chart_io, x=18, w=174)
+            pdf.ln(4)
+
+        # ── Жауаптар ──────────────────────────────────────────────
+        pdf.add_page()
+        pdf.set_font(FN, "B", 12)
+        pdf.set_fill_color(240, 244, 255)
+        pdf.cell(0, 8, "5. Талдау жауаптары мен рефлексия", ln=True, fill=True)
+        pdf.ln(2)
+        qa_items = [
+            ("Диаграмма 1 — Экожүктеме",         "chart_q1"),
+            ("Диаграмма 2 — Еңбек өнімділігі",   "chart_q2"),
+            ("Диаграмма 3 — Scatter заңдылығы",  "chart_q3"),
+            ("Диаграмма 4 — Педагогикалық идея", "chart_q4"),
+            ("Карта 1 — Орналасу факторы",        "map_q1"),
+            ("Карта 2 — Мектепте пайдалану",      "map_q2"),
+            ("Карта 3 — Экологиялық салдар",      "map_q3"),
+            ("Рефлексия 1",                        "refl1"),
+            ("Рефлексия 2",                        "refl2"),
+            ("Рефлексия 3",                        "refl3"),
+            ("Рефлексия 4",                        "refl4"),
+        ]
+        for lbl, key in qa_items:
+            ans = ss.get(key, "") or "(жауап берілмеген)"
+            pdf.set_font(FN, "B", 9)
+            pdf.set_fill_color(235, 240, 255)
+            pdf.cell(0, 6, f"▶ {lbl}", border=1, fill=True, ln=True)
+            pdf.set_font(FN, "", 9)
+            pdf.set_fill_color(255, 255, 255)
+            # Multi-line text with cell wrapping
+            pdf.multi_cell(0, 5.5, ans, border=1)
+            pdf.ln(1)
+
+        pdf_bytes = bytes(pdf.output())
+        return {"pdf": pdf_bytes, "html": html_bytes}
+
     except Exception as e:
-        return False,f"❌ Жіберу қатесі: {e}"
+        # PDF сәтсіз болса — HTML ғана қайтарамыз
+        import traceback
+        err_html = html_bytes + f"\n<!-- PDF error: {e} -->".encode()
+        # Minimal fallback PDF with error message
+        fallback = (
+            b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+            b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+            b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]"
+            b"/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n"
+            b"4 0 obj<</Length 44>>stream\nBT /F1 14 Tf 72 750 Td"
+            b"(PDF Error - use HTML) Tj ET\nendstream\nendobj\n"
+            b"5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n"
+            b"xref\n0 6\n0000000000 65535 f\n"
+            b"trailer<</Size 6/Root 1 0 R>>\nstartxref\n9\n%%EOF"
+        )
+        return {"pdf": fallback, "html": html_bytes}
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -428,7 +597,7 @@ with st.sidebar:
                 ("Тапсыру","15 мин"),("**Барлығы**","**2 сағат**")]:
         st.markdown(f"- {r}: {t}")
     st.divider()
-    st.markdown(f"### 📧 Тапсыру\n**{TEACHER_EMAIL}**")
+    st.markdown("### 📄 Тапсыру\nPDF немесе HTML жүктеп алыңыз.")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -465,7 +634,7 @@ st.markdown("""<div class="step-bar">
 tab1,tab2,tab3,tab4,tab5,tab_t = st.tabs([
     "📖 ① Глоссарий","📊 ② Деректер",
     "📈 ③ Диаграммалар","🗺️ ④ Карта",
-    "📧 ⑤ Тапсыру","🔒 Мұғалім",
+    "📄 ⑤ Тапсыру","🔒 Мұғалім",
 ])
 
 
@@ -608,7 +777,12 @@ with tab4:
 
     center_lat=df_map["lat"].mean()
     center_lon=df_map["lon"].mean()
-    m=folium.Map(location=[center_lat,center_lon],zoom_start=9,tiles=map_tile)
+    m = folium.Map(location=[center_lat, center_lon], tiles=map_tile)
+    _pad = 0.25
+    m.fit_bounds([
+        [df_map["lat"].min() - _pad, df_map["lon"].min() - _pad],
+        [df_map["lat"].max() + _pad, df_map["lon"].max() + _pad],
+    ])
 
     max_eco = df_map["Экожүктеме"].max() if df_map["Экожүктеме"].max()>0 else 1
     for _,row in df_map.iterrows():
@@ -660,7 +834,7 @@ with tab4:
 # ── TAB 5 — ТАПСЫРУ ──────────────────────────────────────────────
 with tab5:
     st.markdown('<div class="time-badge">⏱ 15 минут</div>',unsafe_allow_html=True)
-    st.markdown("## 📧 Жұмысты тапсыру")
+    st.markdown("## 📄 Жұмысты тапсыру")
 
     st.markdown("### 💭 Рефлексия")
     rc1,rc2=st.columns(2)
@@ -687,36 +861,35 @@ with tab5:
             st.metric(crit,f"{e}/{m}",f"{e/m*100:.0f}%")
 
     st.divider()
-    st.markdown("### 📄 HTML есеп + Email")
+    st.markdown("### 📄 Есепті жүктеп алу")
     if not student_name:
-        st.markdown('<div class="warn-box">⚠️ Sidebar-дан аты-жөніңізді толтырыңыз!</div>',unsafe_allow_html=True)
+        st.markdown('<div class="warn-box">⚠️ Sidebar-дан аты-жөніңізді толтырыңыз!</div>',
+                    unsafe_allow_html=True)
     else:
         df_rep  = st.session_state.get("df_main")
         chart_b = st.session_state.get("chart_bytes")
-        ts=datetime.now().strftime("%Y%m%d_%H%M")
-        sn=student_name.replace(" ","_")
-        fname=f"report_{sn}_{ts}.html"
-        word_b=build_html_report(student_name,student_group,student_region,
-                          total_score,grade,breakdown,
-                          df_rep,dict(st.session_state),chart_b)
-        cd,cs=st.columns(2)
-        with cd:
-            st.download_button("⬇️ HTML есепті жүктеп алу",
-                data=word_b,file_name=fname,
-                mime="text/html",
-                use_container_width=True)
-        with cs:
-            if st.button(f"📧 Мұғалімге жіберу → {TEACHER_EMAIL}",
-                         type="primary",use_container_width=True):
-                with st.spinner("Жіберілуде..."):
-                    ok,msg=send_email(student_name,student_group,total_score,grade,word_b,fname)
-                if ok: st.markdown(f'<div class="ok-box">{msg}</div>',unsafe_allow_html=True); st.balloons()
-                else:  st.markdown(f'<div class="warn-box">{msg}</div>',unsafe_allow_html=True)
-
-        st.markdown(f"""<div class="tip-box">
-        📌 1. ⬇️ HTML жүктеп алыңыз (браузерде немесе Word-та ашыңыз) &nbsp;
-        2. 📧 «Мұғалімге жіберу» → есеп автоматты <b>{TEACHER_EMAIL}</b> мекенжайына жіберіледі
-        </div>""",unsafe_allow_html=True)
+        ts  = datetime.now().strftime("%Y%m%d_%H%M")
+        sn  = student_name.replace(" ","_")
+        rep = build_pdf_report(student_name, student_group, student_region,
+                               total_score, grade, breakdown,
+                               df_rep, dict(st.session_state), chart_b)
+        col_pdf, col_htm = st.columns(2)
+        with col_pdf:
+            st.download_button(
+                "⬇️ PDF есепті жүктеу (.pdf)",
+                data=rep["pdf"], file_name=f"report_{sn}_{ts}.pdf",
+                mime="application/pdf", use_container_width=True, type="primary",
+            )
+        with col_htm:
+            st.download_button(
+                "⬇️ HTML есепті жүктеу (.html)",
+                data=rep["html"], file_name=f"report_{sn}_{ts}.html",
+                mime="text/html", use_container_width=True,
+            )
+        st.markdown('''<div class="tip-box">
+        📌 <b>PDF</b> — принтерге немесе мұғалімге тапсыруға. &nbsp;
+        <b>HTML</b> — Word-та ашуға (File → Open → файл.html).</div>''',
+        unsafe_allow_html=True)
 
 
 # ── TAB 6 — МҰҒАЛІМ ПАНЕЛІ ───────────────────────────────────────
@@ -769,13 +942,17 @@ with tab_t:
         st.markdown("### 📊 Деректер кестесі")
         st.dataframe(df,use_container_width=True)
 
-    # Мұғалім Word нұсқасы
-    wb=build_html_report(student_name,student_group,student_region,
-                  total_score,grade,breakdown,df,dict(st.session_state),
-                  st.session_state.get("chart_bytes"))
-    ts=datetime.now().strftime("%Y%m%d_%H%M")
-    sn=(student_name or "student").replace(" ","_")
-    st.download_button("⬇️ HTML есеп (мұғалім нұсқасы)",
-        data=wb,file_name=f"teacher_{sn}_{ts}.html",
-        mime="text/html",
-        use_container_width=True)
+    _ts = datetime.now().strftime("%Y%m%d_%H%M")
+    _sn = (student_name or "student").replace(" ","_")
+    _rep = build_pdf_report(student_name, student_group, student_region,
+                            total_score, grade, breakdown, df,
+                            dict(st.session_state), st.session_state.get("chart_bytes"))
+    _c1, _c2 = st.columns(2)
+    with _c1:
+        st.download_button("⬇️ PDF (мұғалім)",
+            data=_rep["pdf"], file_name=f"teacher_{_sn}_{_ts}.pdf",
+            mime="application/pdf", use_container_width=True, type="primary")
+    with _c2:
+        st.download_button("⬇️ HTML (мұғалім)",
+            data=_rep["html"], file_name=f"teacher_{_sn}_{_ts}.html",
+            mime="text/html", use_container_width=True)
