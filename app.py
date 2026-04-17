@@ -1,716 +1,726 @@
 # ═══════════════════════════════════════════════════════════════════
-# app.py — Индустриялық Қазақстан: интерактивті практикалық сабақ
-# 2-курс география педагогтары студенттері үшін
-# 2 сағатта аяқталатын деректер + диаграмма + карта + қорытынды
+# app.py — Индустриялық Қазақстан · v3
+# Барлық 17 облыс · Реактивті карта · Word есеп · Gmail email
 # ═══════════════════════════════════════════════════════════════════
 
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
 import folium
 from streamlit_folium import st_folium
-import io
-import base64
-from datetime import datetime
+import io, smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text      import MIMEText
+from email.mime.base      import MIMEBase
+from email                import encoders
+from datetime             import datetime
+from docx                 import Document
+from docx.shared          import Pt, RGBColor, Inches, Cm
+from docx.enum.text       import WD_ALIGN_PARAGRAPH
 
-# ── Беттің конфигурациясы ─────────────────────────────────────────
 st.set_page_config(
     page_title="Индустриялық Қазақстан · Практика",
-    page_icon="🏭",
-    layout="wide",
+    page_icon="🏭", layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ── Стиль ─────────────────────────────────────────────────────────
+TEACHER_EMAIL = "samarkhanov_kb@enu.kz"
+
+# ── CSS ───────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap');
-
-html, body, [class*="css"] {
-    font-family: 'IBM Plex Sans', sans-serif;
-}
-h1, h2, h3 {
-    font-family: 'Merriweather', serif;
-    color: #1B2A4A;
-}
-
-/* Прогресс панель */
-.step-bar {
-    display: flex; gap: 8px; margin-bottom: 24px;
-}
-.step-item {
-    flex: 1; padding: 10px 6px; border-radius: 6px;
-    text-align: center; font-size: 12px; font-weight: 600;
-    font-family: 'IBM Plex Mono', monospace;
-    border: 2px solid #DEE2E6;
-    color: #6C757D; background: #F8F9FA;
-    transition: all .3s;
-}
-.step-item.done   { background:#D4EDDA; border-color:#28A745; color:#155724; }
-.step-item.active { background:#1B2A4A; border-color:#1B2A4A; color:#FFD166; }
-
-/* Уақыт бадж */
-.time-badge {
-    display:inline-block; background:#FFD166; color:#1B2A4A;
-    border-radius:20px; padding:4px 14px; font-size:13px;
-    font-weight:700; font-family:'IBM Plex Mono',monospace;
-    margin-bottom:12px;
-}
-
-/* Нұсқаулық блок */
-.tip-box {
-    background:#EEF4FF; border-left:4px solid #4263EB;
-    padding:14px 18px; border-radius:0 8px 8px 0;
-    margin:12px 0; font-size:14px; color:#1B2A4A;
-}
-.warn-box {
-    background:#FFF9DB; border-left:4px solid #F59F00;
-    padding:14px 18px; border-radius:0 8px 8px 0;
-    margin:12px 0; font-size:14px; color:#5C3D00;
-}
-
-/* Рубрика кесте */
-.rubric-table { width:100%; border-collapse:collapse; font-size:13px; }
-.rubric-table th {
-    background:#1B2A4A; color:#FFD166;
-    padding:10px 14px; text-align:left;
-}
-.rubric-table td { padding:9px 14px; border-bottom:1px solid #DEE2E6; }
-.rubric-table tr:nth-child(even) { background:#F8F9FA; }
-
-/* Студент аты */
-.student-header {
-    background: linear-gradient(135deg,#1B2A4A 0%,#2C4A7C 100%);
-    color:white; padding:20px 28px; border-radius:12px;
-    margin-bottom:24px; font-family:'Merriweather',serif;
-}
-.student-header span { color:#FFD166; }
-
-/* Баллдар блогы */
-.score-block {
-    background:#1B2A4A; color:white;
-    padding:20px; border-radius:10px;
-    text-align:center; font-family:'IBM Plex Mono',monospace;
-}
-.score-block .big { font-size:48px; font-weight:700; color:#FFD166; }
+@import url('https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;600&display=swap');
+html,body,[class*="css"]{font-family:'IBM Plex Sans',sans-serif;}
+h1,h2,h3{font-family:'Merriweather',serif;color:#1B2A4A;}
+.step-bar{display:flex;gap:8px;margin-bottom:20px;}
+.step-item{flex:1;padding:9px 4px;border-radius:6px;text-align:center;
+  font-size:11px;font-weight:600;font-family:'IBM Plex Mono',monospace;
+  border:2px solid #DEE2E6;color:#6C757D;background:#F8F9FA;}
+.step-item.done  {background:#D4EDDA;border-color:#28A745;color:#155724;}
+.step-item.active{background:#1B2A4A;border-color:#1B2A4A;color:#FFD166;}
+.time-badge{display:inline-block;background:#FFD166;color:#1B2A4A;
+  border-radius:20px;padding:4px 14px;font-size:13px;font-weight:700;
+  font-family:'IBM Plex Mono',monospace;margin-bottom:12px;}
+.tip-box{background:#EEF4FF;border-left:4px solid #4263EB;
+  padding:12px 16px;border-radius:0 8px 8px 0;margin:10px 0;font-size:14px;color:#1B2A4A;}
+.warn-box{background:#FFF9DB;border-left:4px solid #F59F00;
+  padding:12px 16px;border-radius:0 8px 8px 0;margin:10px 0;font-size:14px;color:#5C3D00;}
+.ok-box{background:#D4EDDA;border-left:4px solid #28A745;
+  padding:12px 16px;border-radius:0 8px 8px 0;margin:10px 0;font-size:14px;color:#155724;}
+.s-header{background:linear-gradient(135deg,#1B2A4A 0%,#2C4A7C 100%);
+  color:white;padding:18px 24px;border-radius:12px;margin-bottom:20px;}
+.s-header span{color:#FFD166;}
+.score-block{background:#1B2A4A;color:white;padding:20px;border-radius:10px;text-align:center;}
+.score-block .big{font-size:50px;font-weight:700;color:#FFD166;line-height:1.1;}
 </style>
 """, unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════
-# SIDEBAR — студент ақпараты + прогресс
+# ДЕРЕКТЕР БАЗАСЫ — БАРЛЫҚ 17 ОБЛЫС
+# Кәсіпорын | Сала | Өнім_мың_т | Жұмысшы_мың | Ластану_коэф | lat | lon
+# ══════════════════════════════════════════════════════════════════
+ALL_DATA = {
+
+    "Қарағанды облысы": [
+        ["Қарағандыкөмір шахтасы","Көмір өндіру",         30000, 18.5, 0.70, 49.806, 73.089],
+        ["ArcelorMittal Теміртау","Қара металлургия",      4100,  12.3, 0.91, 50.067, 72.963],
+        ["Жезқазған ЖЭС",         "Электроэнергетика",     4200,   2.1, 0.82, 47.801, 67.714],
+        ["Қарбид зауыты",         "Химия өнеркәсібі",       120,   0.8, 0.78, 49.835, 73.103],
+    ],
+
+    "Павлодар облысы": [
+        ["Майқайын кеніші",        "Көмір өндіру",          8000,  5.2, 0.65, 52.100, 76.950],
+        ["Павлодар ЖЭС-3",         "Электроэнергетика",     7500,  3.1, 0.85, 52.284, 76.983],
+        ["Қазақстан алюминийі",    "Түсті металлургия",      950,  6.8, 0.78, 52.303, 77.020],
+        ["«Каустик» химия з-ды",   "Химия өнеркәсібі",       200,  1.2, 0.82, 52.261, 76.950],
+    ],
+
+    "Шығыс Қазақстан облысы": [
+        ["Өскемен титан-магний",   "Түсті металлургия",      320,  5.6, 0.83, 49.948, 82.628],
+        ["«Казцинк» Өскемен",      "Түсті металлургия",     1800,  9.2, 0.88, 49.952, 82.607],
+        ["Бұқтырма ГЭС",           "Электроэнергетика",     2700,  1.4, 0.12, 49.019, 84.432],
+        ["Шығыс Қазақстан ЖЭС",    "Электроэнергетика",     1200,  1.8, 0.80, 49.970, 82.590],
+    ],
+
+    "Атырау облысы": [
+        ["Атырау МҚЗ",             "Мұнай өңдеу",           5000,  4.5, 0.80, 47.114, 51.926],
+        ["«ТШО» Теңіз кеніші",     "Мұнай өндіру",         26000,  8.0, 0.72, 45.507, 52.985],
+        ["Атырау ЖЭС",             "Электроэнергетика",      700,  1.2, 0.81, 47.106, 51.978],
+        ["«АНПЗ» химия кешені",    "Химия өнеркәсібі",       350,  0.9, 0.75, 47.099, 51.945],
+    ],
+
+    "Маңғыстау облысы": [
+        ["«ОзенМунайГаз» кеніші",  "Мұнай өндіру",          4800,  5.2, 0.70, 43.608, 52.853],
+        ["Маңғыстау АЭС",          "Атом электроэнергет.",    350,  1.8, 0.05, 43.646, 51.152],
+        ["Ақтау порты — теңіз зауыты","Мұнай өңдеу",         600,  2.1, 0.74, 43.656, 51.166],
+        ["Маңғыстау ЖЭС",          "Электроэнергетика",      450,  1.0, 0.80, 43.660, 51.175],
+    ],
+
+    "Жамбыл облысы": [
+        ["«Казфосфат» Тараз",       "Химия өнеркәсібі",      800,  3.5, 0.85, 42.900, 71.379],
+        ["Жамбыл ЖЭС",              "Электроэнергетика",     1200,  1.9, 0.82, 42.875, 71.401],
+        ["«Каратаукалий»",          "Тау-кен өндіру",         250,  1.2, 0.70, 43.196, 70.464],
+        ["Тараз цемент зауыты",     "Құрылыс материалдары",  1100,  0.9, 0.65, 42.913, 71.355],
+    ],
+
+    "Ақтөбе облысы": [
+        ["«Казхром» Ақтөбе",        "Түсті металлургия",     2200,  4.8, 0.86, 50.279, 57.207],
+        ["ЗЖҚК хром кені",          "Тау-кен өндіру",        3500,  2.3, 0.75, 50.278, 57.234],
+        ["Ақтөбе ЖЭС",              "Электроэнергетика",     1100,  1.5, 0.81, 50.294, 57.149],
+        ["«ТОО Ақтөбе мұнай»",      "Мұнай өндіру",          1200,  1.8, 0.68, 50.360, 57.210],
+    ],
+
+    "Қостанай облысы": [
+        ["«ССГПО» Рудный",          "Тау-кен (темір)",       40000, 14.5, 0.65, 52.956, 63.116],
+        ["«АрселорМиттал» Лисаков", "Тау-кен (темір)",        8000,  3.2, 0.62, 52.650, 62.500],
+        ["Қостанай ЖЭС",            "Электроэнергетика",      900,  1.4, 0.78, 53.214, 63.626],
+        ["Жітіқара алтын кеніші",   "Түсті металлургия",       55,  0.8, 0.72, 52.188, 61.197],
+    ],
+
+    "Батыс Қазақстан облысы": [
+        ["«Ажіп» Қарашығанақ",      "Газ өндіру",           15000,  3.5, 0.62, 50.933, 53.600],
+        ["Орал ЖЭС",                "Электроэнергетика",     1200,  1.3, 0.79, 51.230, 51.390],
+        ["«Казтрансгаз» БҚО",       "Газ тасымалы",          1500,  0.9, 0.55, 51.228, 51.381],
+        ["Орал машина зауыты",      "Машина жасау",           180,  1.1, 0.60, 51.225, 51.375],
+    ],
+
+    "Солтүстік Қазақстан облысы": [
+        ["«Қазмұнайгаз» СҚО",       "Мұнай өндіру",           350,  0.9, 0.65, 54.866, 69.154],
+        ["Петропавл ЖЭС-2",         "Электроэнергетика",     2200,  2.0, 0.80, 54.869, 69.178],
+        ["«Казсельмаш»",            "Ауыл шаруашылық машин.", 120,  1.2, 0.55, 54.875, 69.161],
+        ["Ертіс су қоймасы ГЭС",    "Электроэнергетика",      240,  0.4, 0.08, 54.530, 70.102],
+    ],
+
+    "Қызылорда облысы": [
+        ["«ПетроҚазақстан» Кумкөл", "Мұнай өндіру",          6500,  2.8, 0.68, 44.937, 65.513],
+        ["«Тұраналем» Арыс",        "Химия өнеркәсібі",        80,  0.5, 0.72, 42.429, 68.808],
+        ["Қызылорда ЖЭС",           "Электроэнергетика",      700,  1.0, 0.79, 44.852, 65.509],
+        ["«Шымбай» тамақ өнеркәсібі","Тамақ өнеркәсібі",      200,  0.8, 0.42, 44.843, 65.491],
+    ],
+
+    "Түркістан облысы": [
+        ["«Казфосфат» Тараз-2",     "Химия өнеркәсібі",       650,  2.8, 0.83, 42.302, 68.271],
+        ["Арыс-2 жылу электрст.",   "Электроэнергетика",       800,  1.1, 0.81, 42.434, 68.799],
+        ["Шымкент МҚЗ",             "Мұнай өңдеу",            5200,  4.2, 0.78, 42.317, 69.596],
+        ["«Южполиметалл» Шымкент",  "Түсті металлургия",       420,  2.1, 0.84, 42.301, 69.588],
+    ],
+
+    "Алматы облысы": [
+        ["Балқаш мыс зауыты",       "Түсті металлургия",     1700,  7.2, 0.87, 46.836, 74.965],
+        ["«Қазатомпром» Созақ",     "Уран өндіру",            500,  2.0, 0.50, 44.155, 73.634],
+        ["Жетісу Балқаш ЖЭС",       "Электроэнергетика",     2800,  2.8, 0.84, 46.869, 75.003],
+        ["«КГОК» Қоңыратбасы",      "Тау-кен (мыс)",         3200,  4.5, 0.76, 46.979, 74.892],
+    ],
+
+    "Ақмола облысы": [
+        ["«Васильков Алтын» кені",  "Түсті металлургия",      170,  2.8, 0.70, 51.671, 71.044],
+        ["Ақмола ЖЭС",              "Электроэнергетика",      500,  1.0, 0.77, 51.183, 71.446],
+        ["«Степногорск» химия к-ті","Химия өнеркәсібі",        80,  0.7, 0.75, 52.345, 71.882],
+        ["«Қазатомпром» Есіл",      "Уран өндіру",            420,  1.5, 0.48, 51.880, 68.052],
+    ],
+
+    "Абай облысы": [
+        ["«Казцинк» Семей",         "Түсті металлургия",      650,  3.2, 0.83, 50.414, 80.251],
+        ["Семей ЖЭС",               "Электроэнергетика",     1100,  1.6, 0.80, 50.420, 80.276],
+        ["«СемейЭнерго»",           "Электроэнергетика",      350,  0.8, 0.76, 50.412, 80.249],
+        ["Шар-Семей темір жол цехі","Машина жасау",           200,  1.0, 0.58, 50.389, 80.230],
+    ],
+
+    "Жетісу облысы": [
+        ["«Казцинк» Текелі",        "Түсті металлургия",      380,  2.4, 0.84, 44.861, 78.776],
+        ["Талдықорған цемент зауыты","Құрылыс материалдары",  950,  0.9, 0.63, 44.981, 78.368],
+        ["Жетісу ЖЭС",              "Электроэнергетика",      600,  1.1, 0.78, 44.975, 78.372],
+        ["«АграрноҚазақстан» Тексті","Тамақ өнеркәсібі",      350,  1.2, 0.40, 44.972, 78.359],
+    ],
+
+    "Ұлытау облысы": [
+        ["«Қазмыс» Жезқазған",      "Түсті металлургия",     1200,  6.1, 0.86, 47.801, 67.713],
+        ["Жезді кені",               "Тау-кен (мыс)",        2100,  3.4, 0.74, 48.124, 67.423],
+        ["Ұлытау ЖЭС",              "Электроэнергетика",      320,  0.9, 0.79, 48.619, 66.943],
+        ["«Kazakhmys» Жайрем",       "Тау-кен (полимет.)",    1600,  2.2, 0.78, 48.467, 70.114],
+    ],
+}
+
+# Аудандар тізімі (sorted)
+REGION_LIST = sorted(ALL_DATA.keys())
+
+# Сала → маркер түсі картасы
+SECTOR_COLOR = {
+    "Көмір өндіру":          "black",
+    "Қара металлургия":      "darkred",
+    "Түсті металлургия":     "purple",
+    "Электроэнергетика":     "orange",
+    "Атом электроэнергет.":  "beige",
+    "Мұнай өндіру":          "darkblue",
+    "Мұнай өңдеу":           "blue",
+    "Газ өндіру":            "cadetblue",
+    "Газ тасымалы":          "lightblue",
+    "Химия өнеркәсібі":      "green",
+    "Тау-кен өндіру":        "gray",
+    "Тау-кен (темір)":       "lightgray",
+    "Тау-кен (мыс)":         "darkpurple",
+    "Тау-кен (полимет.)":    "pink",
+    "Машина жасау":          "red",
+    "Тамақ өнеркәсібі":      "lightgreen",
+    "Уран өндіру":           "white",
+    "Құрылыс материалдары":  "lightred",
+}
+
+
+# ══════════════════════════════════════════════════════════════════
+# УТИЛИТАЛАР
+# ══════════════════════════════════════════════════════════════════
+def region_to_df(region: str) -> pd.DataFrame:
+    rows = ALL_DATA.get(region, ALL_DATA["Қарағанды облысы"])
+    df = pd.DataFrame(rows, columns=[
+        "Кәсіпорын","Сала","Өнім_мың_т",
+        "Жұмысшы_мың","Ластану_коэф","lat","lon",
+    ])
+    df["Экожүктеме"]       = (df["Өнім_мың_т"] * df["Ластану_коэф"]).round(1)
+    df["Еңбек_өнімділік"]  = (df["Өнім_мың_т"] / df["Жұмысшы_мың"]).round(1)
+    return df
+
+
+def compute_score(ss: dict) -> tuple:
+    bd = {
+        "📖 Глоссарий":          (min(15, sum(3 for i in range(1,6) if len(ss.get(f"gloss_{i}","").strip())>10)), 15),
+        "📊 Деректер кестесі":   (20 if "df_main" in ss else 0, 20),
+        "📈 Диаграмма талдауы":  (min(20, sum(5 for k in ["chart_q1","chart_q2","chart_q3","chart_q4"] if len(ss.get(k,"").strip())>15)), 20),
+        "🗺️ Карта талдауы":     (min(20, sum(7 for k in ["map_q1","map_q2","map_q3"] if len(ss.get(k,"").strip())>15)), 20),
+        "✍️ Рефлексия":          (min(25, sum(6 for k in ["refl1","refl2","refl3","refl4"] if len(ss.get(k,"").strip())>15)), 25),
+    }
+    return sum(v[0] for v in bd.values()), bd
+
+
+def get_grade(s):
+    return ("A — Өте жақсы" if s>=85 else "B — Жақсы" if s>=70
+            else "C — Орташа" if s>=55 else "D — Аяқтаңыз")
+
+
+# ══════════════════════════════════════════════════════════════════
+# WORD ЕСЕП
+# ══════════════════════════════════════════════════════════════════
+def build_word(name, group, region, score, grade, breakdown, df, ss, chart_b):
+    doc = Document()
+    sec = doc.sections[0]
+    sec.page_width = Cm(21); sec.page_height = Cm(29.7)
+    for a in ("top_margin","bottom_margin","left_margin","right_margin"):
+        setattr(sec, a, Cm(2))
+
+    p = doc.add_paragraph()
+    r = p.add_run("ИНДУСТРИЯЛЫҚ ҚАЗАҚСТАН\nПрактикалық жұмыс есебі")
+    r.font.size=Pt(18); r.bold=True; r.font.color.rgb=RGBColor(0x1B,0x2A,0x4A)
+    p.alignment=WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph()
+
+    t=doc.add_table(rows=0,cols=2); t.style="Table Grid"
+    for k,v in [("Студент",name or "—"),("Топ",group or "—"),("Өңір",region),
+                ("Күн",datetime.now().strftime("%Y-%m-%d %H:%M")),
+                ("Жалпы балл",f"{score}/100"),("Баға",grade)]:
+        row=t.add_row(); row.cells[0].text=k; row.cells[1].text=v
+        row.cells[0].paragraphs[0].runs[0].bold=True
+    doc.add_paragraph()
+
+    doc.add_paragraph().add_run("1. Балл кестесі").bold=True
+    t2=doc.add_table(rows=1,cols=3); t2.style="Table Grid"
+    for i,h in enumerate(["Бөлім","Балл","Макс"]):
+        t2.rows[0].cells[i].text=h; t2.rows[0].cells[i].paragraphs[0].runs[0].bold=True
+    for k,(e,m) in breakdown.items():
+        row=t2.add_row(); row.cells[0].text=k
+        row.cells[1].text=str(e); row.cells[2].text=str(m)
+    doc.add_paragraph()
+
+    doc.add_paragraph().add_run("2. Деректер кестесі").bold=True
+    if df is not None and not df.empty:
+        cols=["Кәсіпорын","Сала","Өнім_мың_т","Жұмысшы_мың","Ластану_коэф","Экожүктеме"]
+        cols=[c for c in cols if c in df.columns]
+        dt=doc.add_table(rows=1,cols=len(cols)); dt.style="Table Grid"
+        for i,c in enumerate(cols):
+            dt.rows[0].cells[i].text=c; dt.rows[0].cells[i].paragraphs[0].runs[0].bold=True
+        for _,row in df[cols].iterrows():
+            tr=dt.add_row()
+            for i,v in enumerate(row): tr.cells[i].text=str(v)
+    doc.add_paragraph()
+
+    doc.add_paragraph().add_run("3. Диаграммалар").bold=True
+    if chart_b:
+        doc.add_picture(io.BytesIO(chart_b), width=Inches(5.8))
+    doc.add_paragraph()
+
+    doc.add_paragraph().add_run("4. Талдау жауаптары").bold=True
+    for lbl,key in [
+        ("Диаграмма 1 — Экожүктеме","chart_q1"),
+        ("Диаграмма 2 — Еңбек өнімділігі","chart_q2"),
+        ("Диаграмма 3 — Scatter заңдылығы","chart_q3"),
+        ("Диаграмма 4 — Педагогикалық идея","chart_q4"),
+        ("Карта 1 — Орналасу факторы","map_q1"),
+        ("Карта 2 — Мектепте пайдалану","map_q2"),
+        ("Карта 3 — Экологиялық салдар","map_q3"),
+        ("Рефлексия 1","refl1"),("Рефлексия 2","refl2"),
+        ("Рефлексия 3","refl3"),("Рефлексия 4","refl4"),
+    ]:
+        p=doc.add_paragraph(); p.add_run(f"▶ {lbl}: ").bold=True
+        a=doc.add_paragraph(ss.get(key,"") or "(жауап жоқ)")
+        a.paragraph_format.left_indent=Cm(1)
+
+    fp=doc.add_paragraph(f"Автоматты жасалды · {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    fp.alignment=WD_ALIGN_PARAGRAPH.CENTER
+    fp.runs[0].font.size=Pt(8); fp.runs[0].font.color.rgb=RGBColor(0x90,0x9A,0xA8)
+
+    buf=io.BytesIO(); doc.save(buf); buf.seek(0)
+    return buf.read()
+
+
+# ══════════════════════════════════════════════════════════════════
+# EMAIL
+# ══════════════════════════════════════════════════════════════════
+def send_email(name, group, score, grade, word_b, filename):
+    try:
+        cfg=st.secrets.get("email",{})
+        sender=cfg.get("sender",""); passwd=cfg.get("password","")
+        if not sender or not passwd:
+            return False,("❌ Email баптанбаған.\nStreamlit Cloud → Settings → Secrets:\n\n"
+                          "[email]\nsender = \"bot@gmail.com\"\npassword = \"xxxx xxxx xxxx xxxx\"")
+        msg=MIMEMultipart()
+        msg["From"]=sender; msg["To"]=TEACHER_EMAIL
+        msg["Subject"]=(f"[ГеоПрактика] {name or 'Студент'} · "
+                        f"{group or '—'} · {score}/100 · "
+                        f"{datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        body=(f"Сәлем, Қанат Берікұлы!\n\nСтудент жұмысты аяқтады.\n\n"
+              f"Студент: {name or '—'}\nТоп: {group or '—'}\n"
+              f"Балл: {score}/100\nБаға: {grade}\n"
+              f"Күн: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
+              f"Word есеп тіркемеде.")
+        msg.attach(MIMEText(body,"plain","utf-8"))
+        part=MIMEBase("application","octet-stream"); part.set_payload(word_b)
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition",f'attachment; filename="{filename}"')
+        msg.attach(part)
+        with smtplib.SMTP_SSL("smtp.gmail.com",465,timeout=15) as s:
+            s.login(sender,passwd); s.sendmail(sender,TEACHER_EMAIL,msg.as_string())
+        return True,f"✅ Есеп {TEACHER_EMAIL} мекенжайына жіберілді!"
+    except smtplib.SMTPAuthenticationError:
+        return False,"❌ Gmail аутентификация қатесі. App Password тексеріңіз."
+    except Exception as e:
+        return False,f"❌ Жіберу қатесі: {e}"
+
+
+# ══════════════════════════════════════════════════════════════════
+# SIDEBAR
 # ══════════════════════════════════════════════════════════════════
 with st.sidebar:
     st.markdown("### 👤 Студент ақпараты")
-    student_name  = st.text_input("Аты-жөніңіз", placeholder="Мысалы: Айгүл Сейітова")
-    student_group = st.text_input("Топ / курс",  placeholder="Мысалы: ГП-22-1")
-    student_region = st.selectbox("Зерттеу өңірі", [
-        "Қарағанды облысы",
-        "Павлодар облысы",
-        "Шығыс Қазақстан облысы",
-        "Маңғыстау облысы",
-        "Атырау облысы",
-        "Жамбыл облысы",
-    ])
+    student_name  = st.text_input("Аты-жөніңіз", placeholder="Айгүл Сейітова")
+    student_group = st.text_input("Топ / курс",   placeholder="ГП-22-1")
+
+    st.markdown("### 🗺 Зерттеу өңірі")
+    student_region = st.selectbox(
+        "Облысты таңдаңыз:",
+        REGION_LIST,
+        index=REGION_LIST.index("Қарағанды облысы"),
+    )
+
+    # ▼ Өңір өзгерсе — деректерді автоматты жаңарту
+    if st.session_state.get("_last_region") != student_region:
+        st.session_state["_last_region"] = student_region
+        st.session_state["df_main"] = region_to_df(student_region)
 
     st.divider()
-    st.markdown("### ⏱ Уақыт бюджеті")
-    st.markdown("""
-    | Бөлім | Уақыт |
-    |---|---|
-    | Глоссарий | 15 мин |
-    | Деректер | 25 мин |
-    | Диаграмма | 25 мин |
-    | Карта | 25 мин |
-    | Қорытынды | 15 мин |
-    | **Барлығы** | **2 сағат** |
-    """)
-
+    st.markdown("### ⏱ 2 сағат бюджеті")
+    for r,t in [("Глоссарий","15 мин"),("Деректер","25 мин"),
+                ("Диаграмма","25 мин"),("Карта","25 мин"),
+                ("Тапсыру","15 мин"),("**Барлығы**","**2 сағат**")]:
+        st.markdown(f"- {r}: {t}")
     st.divider()
-    st.markdown("### 📋 Рубрика (100 балл)")
-    rubric_items = {
-        "Глоссарий (терминдер)": 15,
-        "Деректер кестесі": 20,
-        "Диаграмма сапасы": 20,
-        "Карта элементтері": 20,
-        "Аналитикалық қорытынды": 25,
-    }
-    for k, v in rubric_items.items():
-        st.markdown(f"- **{k}** — {v} балл")
+    st.markdown(f"### 📧 Тапсыру\n**{TEACHER_EMAIL}**")
 
 
 # ══════════════════════════════════════════════════════════════════
 # HEADER
 # ══════════════════════════════════════════════════════════════════
-name_display = student_name if student_name else "___________"
-group_display = student_group if student_group else "___"
-
+nd=student_name  or "___________"
+gd=student_group or "___"
 st.markdown(f"""
-<div class="student-header">
-    <div style="font-size:22px; margin-bottom:6px;">
-        🏭 Индустриялық Қазақстан: цифрлық практика
-    </div>
-    <div style="font-size:15px; opacity:.85;">
-        Студент: <span>{name_display}</span> &nbsp;·&nbsp;
-        Топ: <span>{group_display}</span> &nbsp;·&nbsp;
-        Өңір: <span>{student_region}</span>
-    </div>
-    <div style="font-size:12px; opacity:.6; margin-top:6px;">
-        {datetime.now().strftime("%Y-%m-%d %H:%M")} &nbsp;·&nbsp;
-        2-курс географиялық педагогика бағдарламасы
-    </div>
+<div class="s-header">
+  <div style="font-size:21px;margin-bottom:5px;">🏭 Индустриялық Қазақстан: цифрлық практика</div>
+  <div style="font-size:14px;opacity:.85;">
+    Студент: <span>{nd}</span> &nbsp;·&nbsp;
+    Топ: <span>{gd}</span> &nbsp;·&nbsp;
+    Өңір: <span>{student_region}</span>
+  </div>
+  <div style="font-size:11px;opacity:.6;margin-top:5px;">
+    {datetime.now().strftime("%Y-%m-%d %H:%M")} &nbsp;·&nbsp; 2-курс, географиялық педагогика
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
-# Прогресс жолағы
-st.markdown("""
-<div class="step-bar">
+st.markdown("""<div class="step-bar">
   <div class="step-item done">① Глоссарий</div>
   <div class="step-item active">② Деректер</div>
   <div class="step-item">③ Диаграмма</div>
   <div class="step-item">④ Карта</div>
-  <div class="step-item">⑤ Қорытынды</div>
-</div>
-""", unsafe_allow_html=True)
+  <div class="step-item">⑤ Тапсыру</div>
+</div>""", unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════
-# TABS — сабақтың 5 бөлімі
+# TABS
 # ══════════════════════════════════════════════════════════════════
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📖 ① Глоссарий",
-    "📊 ② Деректер кестесі",
-    "📈 ③ Диаграммалар",
-    "🗺️ ④ Карта",
-    "✍️ ⑤ Қорытынды",
+tab1,tab2,tab3,tab4,tab5,tab_t = st.tabs([
+    "📖 ① Глоссарий","📊 ② Деректер",
+    "📈 ③ Диаграммалар","🗺️ ④ Карта",
+    "📧 ⑤ Тапсыру","🔒 Мұғалім",
 ])
 
 
-# ══════════════════════════════════════════════════════════════════
-# TAB 1 — ГЛОССАРИЙ
-# ══════════════════════════════════════════════════════════════════
+# ── TAB 1 ─────────────────────────────────────────────────────────
 with tab1:
-    st.markdown('<div class="time-badge">⏱ 15 минут</div>', unsafe_allow_html=True)
-    st.markdown("## 📖 Негізгі терминдер глоссарийі")
-
-    st.markdown('<div class="tip-box">📌 <b>Тапсырма:</b> Төмендегі 5 терминнің анықтамасын <b>мектеп оқушысына түсіндіретіндей</b> бір-екі сөйлеммен <b>өз сөзіңізбен</b> жазыңыз. Кейін педагогикалық идея бөліміне de толтырыңыз.</div>', unsafe_allow_html=True)
-
-    # Берілген терминдер
-    terms = {
-        "Отын-энергетикалық кешен (ОЭК)": "Отын (көмір, мұнай, газ) өндіру және электр энергиясын өндіру салаларының жиынтығы.",
-        "Жаңартылатын энергия көздері (ЖЭК)": "Жел, күн, су, геотермалды және басқа сарқылмайтын ресурстарға негізделген энергия.",
-        "Қара металлургия": "Темір рудасын шойын, болат және прокатқа айналдыратын өндіріс саласы.",
-        "Өнеркәсіптік кластер": "Бір аймақта шоғырланған, өзара байланысты өнеркәсіп кәсіпорындарының жүйесі.",
-        "Экологиялық жүктеме": "Өндіріс көлеміне байланысты табиғатқа түсетін шартты әсер көрсеткіші.",
+    st.markdown('<div class="time-badge">⏱ 15 минут</div>',unsafe_allow_html=True)
+    st.markdown("## 📖 Глоссарий")
+    st.markdown('<div class="tip-box">📌 5 терминді <b>өз сөзіңізбен</b> (мектеп оқушысына) жазыңыз.</div>',unsafe_allow_html=True)
+    terms={
+        "Отын-энергетикалық кешен (ОЭК)":"Отын (көмір, мұнай, газ) өндіру және электр энергиясын өндіру салаларының жиынтығы.",
+        "Жаңартылатын энергия (ЖЭК)":"Жел, күн, су — сарқылмайтын ресурстарға негізделген энергия.",
+        "Қара металлургия":"Темір рудасын шойын, болат, прокатқа айналдыратын өндіріс.",
+        "Өнеркәсіптік кластер":"Бір аймақта шоғырланған, өзара байланысты кәсіпорындар жүйесі.",
+        "Экологиялық жүктеме":"Өндіріс көлеміне байланысты табиғатқа түсетін шартты әсер.",
     }
-
-    glossary_answers = {}
-    pedagogy_answers = {}
-
-    for i, (term, definition) in enumerate(terms.items(), 1):
-        with st.expander(f"**{i}. {term}**", expanded=(i <= 2)):
-            st.markdown(f"📚 **Ресми анықтама:** _{definition}_")
-            col_a, col_b = st.columns(2)
-            with col_a:
-                glossary_answers[term] = st.text_area(
-                    f"Өз сөзіңізбен түсіндіріңіз:",
-                    placeholder="Мектеп оқушысына түсінікті болатындай жазыңыз...",
-                    key=f"gloss_{i}", height=100
-                )
-            with col_b:
-                pedagogy_answers[term] = st.text_area(
-                    f"Мектеп сабағында қалай қолданасыз?",
-                    placeholder="Мысалы: 9-сыныпта карта жұмысы кезінде...",
-                    key=f"ped_{i}", height=100
-                )
-
-    # Глоссарий толтырылды ма?
-    filled = sum(1 for v in glossary_answers.values() if len(v.strip()) > 10)
-    st.progress(filled / 5, text=f"Толтырылған: {filled}/5 термин")
-
-    if filled == 5:
-        st.success("✅ Глоссарий толығымен толтырылды! Келесі бөлімге өтіңіз.")
-    else:
-        st.markdown('<div class="warn-box">⚠️ Барлық 5 терминді толтырыңыз — бұл бағалау критерийінің бөлігі.</div>', unsafe_allow_html=True)
+    for i,(term,defn) in enumerate(terms.items(),1):
+        with st.expander(f"**{i}. {term}**", expanded=(i<=2)):
+            st.markdown(f"📚 _{defn}_")
+            c1,c2=st.columns(2)
+            with c1: st.text_area("Өз сөзіңізбен:",placeholder="Мектеп оқушысына...",key=f"gloss_{i}",height=85)
+            with c2: st.text_area("Мектеп сабағында:",placeholder="9-сыныпта...",key=f"ped_{i}",height=85)
+    filled=sum(1 for i in range(1,6) if len(st.session_state.get(f"gloss_{i}","").strip())>10)
+    st.progress(filled/5,text=f"Толтырылған: {filled}/5")
+    if filled==5: st.success("✅ Глоссарий толық!")
 
 
-# ══════════════════════════════════════════════════════════════════
-# TAB 2 — ДЕРЕКТЕР КЕСТЕСІ
-# ══════════════════════════════════════════════════════════════════
+# ── TAB 2 ─────────────────────────────────────────────────────────
 with tab2:
-    st.markdown('<div class="time-badge">⏱ 25 минут</div>', unsafe_allow_html=True)
-    st.markdown(f"## 📊 Деректер кестесі — {student_region}")
+    st.markdown('<div class="time-badge">⏱ 25 минут</div>',unsafe_allow_html=True)
+    st.markdown(f"## 📊 Деректер — {student_region}")
+    st.markdown('<div class="tip-box">📌 Деректерді тексеріңіз немесе өзгертіңіз. <b>Экожүктеме</b> автоматты есептеледі.</div>',unsafe_allow_html=True)
 
-    st.markdown('<div class="tip-box">📌 <b>Тапсырма:</b> Өзіңіздің өңіріңіздегі 4 кәсіпорынды таңдаңыз (нақты немесе шартты). Мәндерді нақты интернет деректерінен немесе оқулықтан алуға тырысыңыз. <b>Экожүктеме автоматты есептеледі.</b></div>', unsafe_allow_html=True)
+    df_default = region_to_df(student_region)
 
-    # Әдепкі деректер (Қарағанды мысалы)
-    DEFAULT_DATA = {
-        "Қарағанды облысы": {
-            "Кәсіпорын":         ["Қарағанды көмір кеніші", "Жезқазған ЖЭС", "ArcelorMittal Теміртау", "Қарбид зауыты"],
-            "Сала":              ["Көмір өндіру", "Электроэнергетика", "Қара металлургия", "Химия өнеркәсібі"],
-            "Өнім_мың_т":        [30000, 4200, 3800, 120],
-            "Жұмысшы_мың_адам":  [18.5, 2.1, 12.3, 0.8],
-            "Ластану_коэф":      [0.70, 0.82, 0.91, 0.78],
-            "lat":               [49.80, 49.63, 50.06, 49.92],
-            "lon":               [73.10, 72.90, 72.95, 73.20],
-        },
-        "Павлодар облысы": {
-            "Кәсіпорын":         ["Майқайын шахтасы", "Павлодар ЖЭС", "Алюминий зауыты", "Химия мегакомбинаты"],
-            "Сала":              ["Көмір өндіру", "Электроэнергетика", "Түсті металлургия", "Химия өнеркәсібі"],
-            "Өнім_мың_т":        [8000, 7500, 950, 200],
-            "Жұмысшы_мың_адам":  [5.2, 3.1, 6.8, 1.2],
-            "Ластану_коэф":      [0.65, 0.85, 0.78, 0.82],
-            "lat":               [52.10, 52.28, 52.30, 52.15],
-            "lon":               [76.95, 76.98, 77.02, 77.10],
-        },
-    }
+    df_display = df_default[["Кәсіпорын","Сала","Өнім_мың_т",
+                              "Жұмысшы_мың","Ластану_коэф","lat","lon"]].copy()
+    df_display.columns=["Кәсіпорын","Сала","Өнім (мың т)",
+                         "Жұмысшы (мың)","Ластану_коэф","lat","lon"]
 
-    region_key = student_region if student_region in DEFAULT_DATA else "Қарағанды облысы"
-    default = DEFAULT_DATA[region_key]
-
-    st.markdown("### ✏️ Деректерді енгізіңіз немесе өзгертіңіз")
-
-    col_hint, col_space = st.columns([3, 1])
-    with col_hint:
-        st.markdown('<div class="warn-box">💡 Төмендегі кестедегі мәндерді нақты деректермен алмастырыңыз. Ластану_коэф — 0-ден 1-ге дейінгі шартты коэффициент.</div>', unsafe_allow_html=True)
-
-    # Редактирлейтін DataFrame
-    df_input = pd.DataFrame({
-        "Кәсіпорын":        default["Кәсіпорын"],
-        "Сала":             default["Сала"],
-        "Өнім (мың т)":    default["Өнім_мың_т"],
-        "Жұмысшы (мың)":   default["Жұмысшы_мың_адам"],
-        "Ластану_коэф":     default["Ластану_коэф"],
-        "Ендік (lat)":      default["lat"],
-        "Бойлық (lon)":     default["lon"],
-    })
-
-    edited_df = st.data_editor(
-        df_input,
-        use_container_width=True,
-        num_rows="dynamic",
+    edited=st.data_editor(
+        df_display, use_container_width=True, num_rows="dynamic",
         column_config={
-            "Өнім (мың т)":  st.column_config.NumberColumn(min_value=0, max_value=500000, step=100),
-            "Жұмысшы (мың)": st.column_config.NumberColumn(min_value=0, max_value=100, step=0.1, format="%.1f"),
-            "Ластану_коэф":  st.column_config.NumberColumn(min_value=0.0, max_value=1.0, step=0.01, format="%.2f"),
-            "Ендік (lat)":   st.column_config.NumberColumn(format="%.4f"),
-            "Бойлық (lon)":  st.column_config.NumberColumn(format="%.4f"),
-        },
-        key="data_editor",
+            "Өнім (мың т)": st.column_config.NumberColumn(min_value=0,max_value=500000,step=100),
+            "Жұмысшы (мың)":st.column_config.NumberColumn(min_value=0,max_value=100,step=0.1,format="%.1f"),
+            "Ластану_коэф": st.column_config.NumberColumn(min_value=0.0,max_value=1.0,step=0.01,format="%.2f"),
+            "lat":           st.column_config.NumberColumn(format="%.4f"),
+            "lon":           st.column_config.NumberColumn(format="%.4f"),
+        }, key="de_" + student_region.replace(" ","_").replace(".",""),
     )
 
-    # Есептеу
-    df = edited_df.copy()
-    df.columns = ["Кәсіпорын","Сала","Өнім_мың_т","Жұмысшы_мың","Ластану_коэф","lat","lon"]
-    df["Экожүктеме"] = (df["Өнім_мың_т"] * df["Ластану_коэф"]).round(1)
-    df["Еңбек_өнімділік"] = (df["Өнім_мың_т"] / df["Жұмысшы_мың"]).round(1)
+    df=edited.copy()
+    df.columns=["Кәсіпорын","Сала","Өнім_мың_т","Жұмысшы_мың","Ластану_коэф","lat","lon"]
+    df["Экожүктеме"]      =(df["Өнім_мың_т"]*df["Ластану_коэф"]).round(1)
+    df["Еңбек_өнімділік"] =(df["Өнім_мың_т"]/df["Жұмысшы_мың"]).round(1)
+    st.session_state["df_main"]=df
 
-    st.markdown("### 📋 Есептелген кесте")
     st.dataframe(
-        df[["Кәсіпорын","Сала","Өнім_мың_т","Жұмысшы_мың","Ластану_коэф","Экожүктеме","Еңбек_өнімділік"]],
+        df[["Кәсіпорын","Сала","Өнім_мың_т","Жұмысшы_мың",
+            "Ластану_коэф","Экожүктеме","Еңбек_өнімділік"]],
         use_container_width=True,
     )
-
-    # Экономикалық талдау
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Жалпы өнім (мың т)", f"{df['Өнім_мың_т'].sum():,.0f}")
-    col2.metric("Жалпы жұмысшы (мың)", f"{df['Жұмысшы_мың'].sum():.1f}")
-    col3.metric("Орт. ластану коэф.", f"{df['Ластану_коэф'].mean():.2f}")
-    col4.metric("Жалпы экожүктеме", f"{df['Экожүктеме'].sum():,.0f}")
-
-    # Session state-ке сақтау
-    st.session_state["df_main"] = df
+    c1,c2,c3,c4=st.columns(4)
+    c1.metric("Жалпы өнім",f"{df['Өнім_мың_т'].sum():,.0f} мың т")
+    c2.metric("Жалпы жұмысшы",f"{df['Жұмысшы_мың'].sum():.1f} мың")
+    c3.metric("Орт. ластану коэф.",f"{df['Ластану_коэф'].mean():.2f}")
+    c4.metric("Жалпы экожүктеме",f"{df['Экожүктеме'].sum():,.0f}")
 
 
-# ══════════════════════════════════════════════════════════════════
-# TAB 3 — ДИАГРАММАЛАР
-# ══════════════════════════════════════════════════════════════════
+# ── TAB 3 ─────────────────────────────────────────────────────────
 with tab3:
-    st.markdown('<div class="time-badge">⏱ 25 минут</div>', unsafe_allow_html=True)
-    st.markdown("## 📈 Диаграммалар жасау")
+    st.markdown('<div class="time-badge">⏱ 25 минут</div>',unsafe_allow_html=True)
+    st.markdown("## 📈 Диаграммалар")
+    df=st.session_state.get("df_main")
+    if df is None:
+        st.warning("⚠️ Алдымен ② Деректер бөлімін тексеріңіз!")
+    else:
+        CM=['#1B2A4A','#2C4A7C','#4263EB','#74C0FC']
+        CE=['#D9534F','#E07B39','#F0AD4E','#C9302C']
+        fig,axes=plt.subplots(2,2,figsize=(13,8))
+        fig.patch.set_facecolor('#F8F9FA')
+        for ax,y,title,clrs in [
+            (axes[0,0],"Өнім_мың_т","Өнім көлемі (мың т)",CM),
+            (axes[0,1],"Экожүктеме","Экологиялық жүктеме",CE),
+        ]:
+            bars=ax.bar(df["Сала"],df[y],color=clrs[:len(df)],edgecolor="white")
+            ax.set_title(title,fontsize=11,fontweight="bold")
+            ax.tick_params(axis="x",rotation=25,labelsize=8)
+            ax.set_facecolor("#FFF"); ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
+            for b in bars:
+                h=b.get_height()
+                ax.text(b.get_x()+b.get_width()/2,h+h*0.01,f"{h:,.0f}",ha="center",va="bottom",fontsize=7.5)
+        axes[1,0].barh(df["Сала"],df["Еңбек_өнімділік"],color="#4263EB",edgecolor="white")
+        axes[1,0].set_title("Еңбек өнімділігі (мың т / мың жұм.)",fontsize=11,fontweight="bold")
+        axes[1,0].tick_params(axis="y",labelsize=8); axes[1,0].set_facecolor("#FFF")
+        axes[1,0].spines["top"].set_visible(False); axes[1,0].spines["right"].set_visible(False)
+        axes[1,1].scatter(df["Өнім_мың_т"],df["Ластану_коэф"],
+            s=df["Жұмысшы_мың"]*25,c=CM[:len(df)],
+            alpha=0.85,edgecolors="white",linewidths=1.5)
+        for i,row in df.iterrows():
+            axes[1,1].annotate(row["Сала"][:12],(row["Өнім_мың_т"],row["Ластану_коэф"]),
+                textcoords="offset points",xytext=(5,3),fontsize=7)
+        axes[1,1].set_title("Өнім vs Ластану",fontsize=11,fontweight="bold")
+        axes[1,1].set_facecolor("#FFF"); axes[1,1].spines["top"].set_visible(False); axes[1,1].spines["right"].set_visible(False)
+        plt.suptitle(f"Өнеркәсіп талдауы — {student_region}",
+                     fontsize=13,fontweight="bold",y=1.01,color="#1B2A4A")
+        plt.tight_layout()
+        st.pyplot(fig,use_container_width=True)
+        buf=io.BytesIO(); fig.savefig(buf,format="png",dpi=110,bbox_inches="tight"); plt.close(fig)
+        st.session_state["chart_bytes"]=buf.getvalue()
 
-    if "df_main" not in st.session_state:
-        st.warning("⚠️ Алдымен ② бөліміндегі деректерді толтырыңыз!")
-        st.stop()
-
-    df = st.session_state["df_main"]
-
-    st.markdown('<div class="tip-box">📌 <b>Тапсырма:</b> Төмендегі диаграммаларды талдаңыз. Әр диаграмма астында берілген сұраққа жауап жазыңыз.</div>', unsafe_allow_html=True)
-
-    # ── Диаграммалар ──────────────────────────────────────────────
-    fig, axes = plt.subplots(2, 2, figsize=(13, 9))
-    fig.patch.set_facecolor('#F8F9FA')
-
-    colors_main  = ['#1B2A4A','#2C4A7C','#4263EB','#74C0FC']
-    colors_eco   = ['#D9534F','#E07B39','#F0AD4E','#C9302C']
-
-    # Диаграмма 1 — Өнім көлемі
-    ax1 = axes[0, 0]
-    bars = ax1.bar(df["Сала"], df["Өнім_мың_т"], color=colors_main, edgecolor='white', linewidth=0.8)
-    ax1.set_title("Өнім көлемі (мың т)", fontsize=12, fontweight='bold', pad=10)
-    ax1.set_ylabel("Мың тонна")
-    ax1.tick_params(axis='x', rotation=20)
-    ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{x:,.0f}"))
-    ax1.set_facecolor('#FFFFFF')
-    ax1.spines['top'].set_visible(False)
-    ax1.spines['right'].set_visible(False)
-    for bar in bars:
-        h = bar.get_height()
-        ax1.text(bar.get_x() + bar.get_width()/2, h + h*0.01,
-                 f"{h:,.0f}", ha='center', va='bottom', fontsize=8, fontweight='600')
-
-    # Диаграмма 2 — Экологиялық жүктеме
-    ax2 = axes[0, 1]
-    bars2 = ax2.bar(df["Сала"], df["Экожүктеме"], color=colors_eco, edgecolor='white', linewidth=0.8)
-    ax2.set_title("Экологиялық жүктеме (шартты)", fontsize=12, fontweight='bold', pad=10)
-    ax2.set_ylabel("Шартты бірлік")
-    ax2.tick_params(axis='x', rotation=20)
-    ax2.set_facecolor('#FFFFFF')
-    ax2.spines['top'].set_visible(False)
-    ax2.spines['right'].set_visible(False)
-    for bar in bars2:
-        h = bar.get_height()
-        ax2.text(bar.get_x() + bar.get_width()/2, h + h*0.01,
-                 f"{h:,.0f}", ha='center', va='bottom', fontsize=8, fontweight='600')
-
-    # Диаграмма 3 — Еңбек өнімділігі
-    ax3 = axes[1, 0]
-    ax3.barh(df["Сала"], df["Еңбек_өнімділік"], color='#4263EB', edgecolor='white')
-    ax3.set_title("Еңбек өнімділігі (мың т / 1 мың жұмысшы)", fontsize=11, fontweight='bold', pad=10)
-    ax3.set_xlabel("Мың т / мың жұмысшы")
-    ax3.set_facecolor('#FFFFFF')
-    ax3.spines['top'].set_visible(False)
-    ax3.spines['right'].set_visible(False)
-
-    # Диаграмма 4 — Ластану коэф. / Өнім (scatter)
-    ax4 = axes[1, 1]
-    scatter = ax4.scatter(
-        df["Өнім_мың_т"], df["Ластану_коэф"],
-        s=df["Жұмысшы_мың"] * 25, c=colors_main[:len(df)],
-        alpha=0.85, edgecolors='white', linewidths=1.5
-    )
-    for i, row in df.iterrows():
-        ax4.annotate(row["Сала"][:15], (row["Өнім_мың_т"], row["Ластану_коэф"]),
-                     textcoords="offset points", xytext=(6, 4), fontsize=7.5)
-    ax4.set_title("Өнім vs Ластану (шеңбер = жұмысшы саны)", fontsize=11, fontweight='bold', pad=10)
-    ax4.set_xlabel("Өнім көлемі (мың т)")
-    ax4.set_ylabel("Ластану коэффициенті")
-    ax4.set_facecolor('#FFFFFF')
-    ax4.spines['top'].set_visible(False)
-    ax4.spines['right'].set_visible(False)
-
-    plt.suptitle(f"Өнеркәсіп талдауы — {student_region}",
-                 fontsize=14, fontweight='bold', y=1.01, color='#1B2A4A')
-    plt.tight_layout()
-    st.pyplot(fig, use_container_width=True)
-    plt.close()
-
-    # Талдау сұрақтары
-    st.markdown("### 🔍 Диаграмма талдауы")
-    st.markdown('<div class="tip-box">📌 Диаграммаларды мұқият қарап, төмендегі сұрақтарға жауап беріңіз.</div>', unsafe_allow_html=True)
-
-    q_col1, q_col2 = st.columns(2)
-    with q_col1:
-        chart_q1 = st.text_area(
-            "1️⃣ Қай саланың экожүктемесі ең жоғары? Неге?",
-            placeholder="Диаграмма 2-ге қарап жауап беріңіз...",
-            height=100, key="chart_q1"
-        )
-        chart_q2 = st.text_area(
-            "2️⃣ Еңбек өнімділігі жоғары саланы атаңыз. Бұл не туралы айтады?",
-            placeholder="Диаграмма 3 негізінде...",
-            height=100, key="chart_q2"
-        )
-    with q_col2:
-        chart_q3 = st.text_area(
-            "3️⃣ Scatter диаграммасынан қандай заңдылық байқайсыз?",
-            placeholder="Өнім мен ластану арасындағы байланыс...",
-            height=100, key="chart_q3"
-        )
-        chart_q4 = st.text_area(
-            "4️⃣ Бұл диаграммаларды мектеп географиясында қалай қолданасыз?",
-            placeholder="Мысалы: 9-сыныпта ТЭК тақырыбын өткенде...",
-            height=100, key="chart_q4"
-        )
-
-    filled_q = sum(1 for q in [chart_q1,chart_q2,chart_q3,chart_q4] if len(q.strip()) > 15)
-    st.progress(filled_q/4, text=f"Жауап берілді: {filled_q}/4 сұрақ")
+        st.markdown("### 🔍 Талдау сұрақтары")
+        c1,c2=st.columns(2)
+        with c1:
+            st.text_area("1️⃣ Қай саланың экожүктемесі ең жоғары? Неге?",key="chart_q1",height=90)
+            st.text_area("2️⃣ Еңбек өнімділігі жоғары саланы атаңыз.",key="chart_q2",height=90)
+        with c2:
+            st.text_area("3️⃣ Scatter диаграммасынан қандай заңдылық?",key="chart_q3",height=90)
+            st.text_area("4️⃣ Мектеп географиясында қалай қолданасыз?",key="chart_q4",height=90)
 
 
-# ══════════════════════════════════════════════════════════════════
-# TAB 4 — КАРТА
-# ══════════════════════════════════════════════════════════════════
+# ── TAB 4 ─────────────────────────────────────────────────────────
 with tab4:
-    st.markdown('<div class="time-badge">⏱ 25 минут</div>', unsafe_allow_html=True)
-    st.markdown("## 🗺️ Интерактивті карта — кәсіпорындар")
+    st.markdown('<div class="time-badge">⏱ 25 минут</div>',unsafe_allow_html=True)
+    st.markdown(f"## 🗺️ Карта — {student_region}")
 
-    if "df_main" not in st.session_state:
-        st.warning("⚠️ Алдымен ② бөліміндегі деректерді толтырыңыз!")
-        st.stop()
+    # ▼ Карта SESSION STATE-ке байланысты емес, тікелей student_region бойынша алынады
+    df_map = region_to_df(student_region)
+    # Студент редактирлеген деректер болса — оны қолдану
+    if "df_main" in st.session_state:
+        edited_df = st.session_state["df_main"]
+        # Тек ағымдағы өңір деректері болса қолдан
+        if len(edited_df) > 0:
+            df_map = edited_df
 
-    df = st.session_state["df_main"]
+    co,_=st.columns([1,2])
+    with co:
+        map_tile    =st.selectbox("Карта стилі",["OpenStreetMap","CartoDB positron","CartoDB dark_matter"])
+        show_poly   =st.checkbox("Сызықпен байланыстыру",True)
+        show_circle =st.checkbox("Экожүктеме шеңберлері",True)
 
-    st.markdown('<div class="tip-box">📌 <b>Тапсырма:</b> Картадағы маркерлерді тексеріңіз. Координаттар ② бөліміндегі деректерден алынады. Карта сұрақтарына жауап беріңіз.</div>', unsafe_allow_html=True)
+    center_lat=df_map["lat"].mean()
+    center_lon=df_map["lon"].mean()
+    m=folium.Map(location=[center_lat,center_lon],zoom_start=9,tiles=map_tile)
 
-    # Карта параметрлері
-    col_map_opt, col_map_info = st.columns([1, 2])
-    with col_map_opt:
-        map_type = st.selectbox("Карта стилі", [
-            "OpenStreetMap", "CartoDB positron", "CartoDB dark_matter"
-        ])
-        show_polyline = st.checkbox("Кәсіпорындарды сызықпен байланыстыру", value=True)
-        show_circle   = st.checkbox("Экожүктемені шеңберлер арқылы көрсету", value=True)
-
-    color_map = {
-        "Көмір өндіру": "black",
-        "Электроэнергетика": "orange",
-        "Қара металлургия": "darkred",
-        "Түсті металлургия": "purple",
-        "Химия өнеркәсібі": "green",
-        "Мұнай өндіру": "darkblue",
-        "Газ өндіру": "blue",
-    }
-
-    center_lat = df["lat"].mean()
-    center_lon = df["lon"].mean()
-    m = folium.Map(location=[center_lat, center_lon], zoom_start=9,
-                   tiles=map_type)
-
-    # Маркерлер
-    for _, row in df.iterrows():
-        color = color_map.get(row["Сала"], "gray")
-        popup_html = f"""
-        <b style='font-size:14px'>{row['Кәсіпорын']}</b><br>
-        <hr style='margin:4px 0'>
-        Сала: <b>{row['Сала']}</b><br>
-        Өнім: <b>{row['Өнім_мың_т']:,} мың т</b><br>
-        Жұмысшы: <b>{row['Жұмысшы_мың']} мың адам</b><br>
-        Ластану коэф.: <b>{row['Ластану_коэф']}</b><br>
-        <b style='color:red'>Экожүктеме: {row['Экожүктеме']:,}</b>
-        """
+    max_eco = df_map["Экожүктеме"].max() if df_map["Экожүктеме"].max()>0 else 1
+    for _,row in df_map.iterrows():
+        color=SECTOR_COLOR.get(row["Сала"],"gray")
+        popup=(f"<b style='font-size:13px'>{row['Кәсіпорын']}</b><br>"
+               f"Сала: <b>{row['Сала']}</b><br>"
+               f"Өнім: {row['Өнім_мың_т']:,} мың т<br>"
+               f"Жұмысшы: {row['Жұмысшы_мың']} мың<br>"
+               f"Ластану: {row['Ластану_коэф']}<br>"
+               f"<b style='color:red'>Экожүктеме: {row['Экожүктеме']:,}</b>")
         folium.Marker(
-            location=[row["lat"], row["lon"]],
-            popup=folium.Popup(popup_html, max_width=250),
+            [row["lat"],row["lon"]],
+            popup=folium.Popup(popup,max_width=240),
             tooltip=row["Кәсіпорын"],
-            icon=folium.Icon(color=color, icon="industry", prefix="fa")
+            icon=folium.Icon(color=color,icon="industry",prefix="fa"),
         ).add_to(m)
-
         if show_circle:
             folium.CircleMarker(
-                location=[row["lat"], row["lon"]],
-                radius=max(5, row["Экожүктеме"] / df["Экожүктеме"].max() * 35),
-                color="red", fill=True, fill_opacity=0.15,
-                popup=f"Экожүктеме: {row['Экожүктеме']:,.0f}"
+                [row["lat"],row["lon"]],
+                radius=max(6, row["Экожүктеме"]/max_eco*40),
+                color="red",fill=True,fill_opacity=0.15,
+                tooltip=f"Экожүктеме: {row['Экожүктеме']:,}",
             ).add_to(m)
+    if show_poly and len(df_map)>1:
+        folium.PolyLine(df_map[["lat","lon"]].values.tolist(),
+            color="#1B2A4A",weight=2,opacity=0.6,dash_array="5").add_to(m)
 
-    # Сызықтар
-    if show_polyline and len(df) > 1:
-        coords = df[["lat","lon"]].values.tolist()
-        folium.PolyLine(
-            coords, color="#1B2A4A", weight=2,
-            opacity=0.6, dash_array="5",
-            tooltip="Өнеркәсіптік байланыс"
-        ).add_to(m)
-
-    # Легенда
-    legend_html = """
-    <div style='position:fixed;bottom:40px;left:40px;
-         background:white;padding:12px 16px;border-radius:8px;
-         border:1px solid #dee2e6;font-size:12px;z-index:999;
-         box-shadow:0 2px 8px rgba(0,0,0,.15)'>
-    <b style='font-size:13px'>Шеңбер — Экожүктеме</b><br>
-    (Шеңбер үлкен = жүктеме жоғары)
-    </div>
-    """
+    # Сала аңызы
+    legend_html="<div style='position:fixed;bottom:30px;right:30px;background:white;padding:12px;border-radius:8px;border:1px solid #ccc;font-size:11px;z-index:999'>"
+    for sala in df_map["Сала"].unique():
+        c=SECTOR_COLOR.get(sala,"gray")
+        legend_html+=f"<div style='margin:3px 0'><span style='background:{c};display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:5px'></span>{sala}</div>"
+    legend_html+="</div>"
     m.get_root().html.add_child(folium.Element(legend_html))
 
-    map_output = st_folium(m, width=None, height=520, use_container_width=True)
+    st_folium(m, width=None, height=520, use_container_width=True,
+              key="folium_" + student_region.replace(" ","_").replace(".",""))
 
-    # Карта талдауы
     st.markdown("### 🔍 Кеңістіктік талдау")
-    col_mq1, col_mq2 = st.columns(2)
-    with col_mq1:
-        map_q1 = st.text_area(
-            "🗺 Неге бұл кәсіпорындар бір-біріне жақын орналасқан?",
-            placeholder="Шикізат, энергия, су, нарыққа жақындық...",
-            height=110, key="map_q1"
-        )
-    with col_mq2:
-        map_q2 = st.text_area(
-            "🏫 Осы картаны мектеп сабағында қалай пайдаланасыз?",
-            placeholder="Мысалы: 9-сыныпта экономикалық карта жұмысында...",
-            height=110, key="map_q2"
-        )
-
-    map_q3 = st.text_area(
-        "🌿 Ең жоғары экологиялық жүктемесі бар кәсіпорын қайда? Оның экологиялық салдарын сипаттаңыз:",
-        placeholder="Картадағы шеңберлерге қарап жауап беріңіз...",
-        height=100, key="map_q3"
-    )
+    c1,c2=st.columns(2)
+    with c1: st.text_area("🗺 Неге кәсіпорындар бір-біріне жақын?",
+                          placeholder="Шикізат, энергия, су...",height=95,key="map_q1")
+    with c2: st.text_area("🏫 Картаны мектеп сабағында қалай пайдаланасыз?",
+                          placeholder="9-сыныпта...",height=95,key="map_q2")
+    st.text_area("🌿 Ең жоғары экожүктемесі бар кәсіпорынның экологиялық салдары:",
+                 placeholder="Картадағы шеңберлерге қарап...",height=85,key="map_q3")
 
 
-# ══════════════════════════════════════════════════════════════════
-# TAB 5 — ҚОРЫТЫНДЫ
-# ══════════════════════════════════════════════════════════════════
+# ── TAB 5 — ТАПСЫРУ ──────────────────────────────────────────────
 with tab5:
-    st.markdown('<div class="time-badge">⏱ 15 минут</div>', unsafe_allow_html=True)
-    st.markdown("## ✍️ Аналитикалық қорытынды")
+    st.markdown('<div class="time-badge">⏱ 15 минут</div>',unsafe_allow_html=True)
+    st.markdown("## 📧 Жұмысты тапсыру")
 
-    st.markdown('<div class="tip-box">📌 <b>Тапсырма:</b> Төмендегі кестені толтырыңыз және рефлексия сұрақтарына жауап беріңіз. Сонан соң <b>Нәтижені жүктеп алыңыз</b>.</div>', unsafe_allow_html=True)
+    st.markdown("### 💭 Рефлексия")
+    rc1,rc2=st.columns(2)
+    with rc1:
+        st.text_area("1️⃣ Қай бөлік ең пайдалы болды?",key="refl1",height=95)
+        st.text_area("2️⃣ Қандай қиындықтар кездесті?",key="refl2",height=95)
+    with rc2:
+        st.text_area("3️⃣ Болашақ мұғалім ретінде осы тәсілді қалай қолданасыз?",key="refl3",height=95)
+        st.text_area("4️⃣ Цифрлық картография мектеп географиясы үшін маңызды ма?",key="refl4",height=95)
 
-    # Педагогикалық қорытынды кесте
-    st.markdown("### 📋 Педагогикалық қорытынды кесте")
+    st.divider()
+    total_score,breakdown=compute_score(st.session_state)
+    grade=get_grade(total_score)
+    bc1,bc2=st.columns([1,2])
+    with bc1:
+        st.markdown(f"""<div class="score-block">
+          <div style="font-size:12px;opacity:.7;">Жинаған балл</div>
+          <div class="big">{total_score}</div>
+          <div style="font-size:12px;opacity:.7;">/ 100</div>
+          <div style="margin-top:10px;font-size:14px;color:#A8D5BA;">{grade}</div>
+        </div>""",unsafe_allow_html=True)
+    with bc2:
+        for crit,(e,m) in breakdown.items():
+            st.metric(crit,f"{e}/{m}",f"{e/m*100:.0f}%")
 
-    if "df_main" in st.session_state:
-        df = st.session_state["df_main"]
-        sectors = df["Сала"].tolist()
+    st.divider()
+    st.markdown("### 📄 Word есеп + Email")
+    if not student_name:
+        st.markdown('<div class="warn-box">⚠️ Sidebar-дан аты-жөніңізді толтырыңыз!</div>',unsafe_allow_html=True)
     else:
-        sectors = ["Сала 1", "Сала 2", "Сала 3"]
+        df_rep  = st.session_state.get("df_main")
+        chart_b = st.session_state.get("chart_bytes")
+        ts=datetime.now().strftime("%Y%m%d_%H%M")
+        sn=student_name.replace(" ","_")
+        fname=f"report_{sn}_{ts}.docx"
+        word_b=build_word(student_name,student_group,student_region,
+                          total_score,grade,breakdown,
+                          df_rep,dict(st.session_state),chart_b)
+        cd,cs=st.columns(2)
+        with cd:
+            st.download_button("⬇️ Word есепті жүктеп алу",
+                data=word_b,file_name=fname,
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True)
+        with cs:
+            if st.button(f"📧 Мұғалімге жіберу → {TEACHER_EMAIL}",
+                         type="primary",use_container_width=True):
+                with st.spinner("Жіберілуде..."):
+                    ok,msg=send_email(student_name,student_group,total_score,grade,word_b,fname)
+                if ok: st.markdown(f'<div class="ok-box">{msg}</div>',unsafe_allow_html=True); st.balloons()
+                else:  st.markdown(f'<div class="warn-box">{msg}</div>',unsafe_allow_html=True)
 
-    concl_data = {
-        "Сала": sectors[:3] if len(sectors) >= 3 else sectors,
-        "Негізгі орналасу факторы": [""] * min(3, len(sectors)),
-        "Экологиялық проблема": [""] * min(3, len(sectors)),
-        "Мектеп сабағындағы тақырып": [""] * min(3, len(sectors)),
-    }
-    df_concl = pd.DataFrame(concl_data)
+        st.markdown(f"""<div class="tip-box">
+        📌 1. ⬇️ Word жүктеп алыңыз (сақтық) &nbsp;
+        2. 📧 «Мұғалімге жіберу» → есеп автоматты <b>{TEACHER_EMAIL}</b> мекенжайына жіберіледі
+        </div>""",unsafe_allow_html=True)
 
-    edited_concl = st.data_editor(
-        df_concl, use_container_width=True, num_rows="fixed",
-        key="concl_editor"
-    )
 
-    st.divider()
-    st.markdown("### 💭 Рефлексия сұрақтары")
+# ── TAB 6 — МҰҒАЛІМ ПАНЕЛІ ───────────────────────────────────────
+with tab_t:
+    st.markdown("## 🔒 Мұғалімнің панелі")
+    st.markdown('<div class="warn-box">⚠️ Тек мұғалімге арналған.</div>',unsafe_allow_html=True)
+    TPASS=st.secrets.get("teacher",{}).get("password","enu2025geo")
+    pwd=st.text_input("Пароль:",type="password",key="tpwd")
+    if pwd!=TPASS:
+        if pwd: st.error("Пароль дұрыс емес.")
+        st.stop()
 
-    refl_col1, refl_col2 = st.columns(2)
-    with refl_col1:
-        refl1 = st.text_area(
-            "1️⃣ Бүгінгі сабақта қай бөлік сізге ең пайдалы болды?",
-            placeholder="Кесте, диаграмма, карта немесе талдау бөлімі...",
-            height=120, key="refl1"
-        )
-        refl2 = st.text_area(
-            "2️⃣ Қандай қиындықтар кездесті?",
-            placeholder="Деректер табу, код жазу, картаға қою...",
-            height=120, key="refl2"
-        )
-    with refl_col2:
-        refl3 = st.text_area(
-            "3️⃣ Болашақ мұғалім ретінде осы тәсілді мектепте қалай қолданасыз?",
-            placeholder="Нақты сынып, тақырып, технология...",
-            height=120, key="refl3"
-        )
-        refl4 = st.text_area(
-            "4️⃣ Цифрлық картография — мектеп географиясы үшін маңызды ма?",
-            placeholder="Пікіріңізді дәлелмен жазыңыз...",
-            height=120, key="refl4"
-        )
+    st.success("✅ Кіру рұқсат етілді.")
+    total_score,breakdown=compute_score(st.session_state)
+    grade=get_grade(total_score)
+    df=st.session_state.get("df_main")
 
-    st.divider()
+    st.markdown("### 👤 Студент жұмысы")
+    ci,cs=st.columns([2,1])
+    with ci:
+        for k,v in [("Студент",student_name or "—"),("Топ",student_group or "—"),
+                    ("Өңір",student_region),("Балл",f"{total_score}/100"),("Баға",grade)]:
+            st.markdown(f"**{k}:** {v}")
+    with cs:
+        st.markdown(f"""<div class="score-block">
+          <div class="big">{total_score}</div>
+          <div style="font-size:12px;opacity:.7;">/ 100 · {grade}</div>
+        </div>""",unsafe_allow_html=True)
 
-    # ── Балл есептеу ─────────────────────────────────────────────
-    st.markdown("### 🏆 Автобағалау нәтижесі")
+    st.markdown("### 🗂 Балл кестесі")
+    st.dataframe(pd.DataFrame(
+        [(k,e,m,f"{e/m*100:.0f}%") for k,(e,m) in breakdown.items()],
+        columns=["Бөлім","Балл","Макс","Пайыз"],
+    ),use_container_width=True,hide_index=True)
 
-    score = 0
-    breakdown = {}
+    st.markdown("### 📝 Жауаптар")
+    for lbl,key in [
+        ("📊 Диаграмма 1","chart_q1"),("📊 Диаграмма 2","chart_q2"),
+        ("📊 Диаграмма 3","chart_q3"),("📊 Диаграмма 4","chart_q4"),
+        ("🗺️ Карта 1","map_q1"),("🗺️ Карта 2","map_q2"),("🗺️ Карта 3","map_q3"),
+        ("💭 Рефлексия 1","refl1"),("💭 Рефлексия 2","refl2"),
+        ("💭 Рефлексия 3","refl3"),("💭 Рефлексия 4","refl4"),
+    ]:
+        ans=st.session_state.get(key,"")
+        icon="✅" if len(ans.strip())>30 else ("⚠️" if len(ans.strip())>10 else "❌")
+        with st.expander(f"{icon} {lbl}"):
+            st.write(ans or "_Жауап берілмеген_")
 
-    # Глоссарий (15 балл)
-    gloss_score = min(15, sum(3 for v in [
-        st.session_state.get("gloss_1",""),
-        st.session_state.get("gloss_2",""),
-        st.session_state.get("gloss_3",""),
-        st.session_state.get("gloss_4",""),
-        st.session_state.get("gloss_5",""),
-    ] if len(v.strip()) > 10))
-    breakdown["📖 Глоссарий"] = (gloss_score, 15)
+    if df is not None:
+        st.markdown("### 📊 Деректер кестесі")
+        st.dataframe(df,use_container_width=True)
 
-    # Деректер (20 балл)
-    has_data = "df_main" in st.session_state
-    data_score = 20 if has_data else 0
-    breakdown["📊 Деректер кестесі"] = (data_score, 20)
-
-    # Диаграмма сұрақтары (20 балл)
-    chart_answered = sum(1 for k in ["chart_q1","chart_q2","chart_q3","chart_q4"]
-                         if len(st.session_state.get(k,"").strip()) > 15)
-    chart_score = chart_answered * 5
-    breakdown["📈 Диаграмма талдауы"] = (chart_score, 20)
-
-    # Карта сұрақтары (20 балл)
-    map_answered = sum(1 for k in ["map_q1","map_q2","map_q3"]
-                       if len(st.session_state.get(k,"").strip()) > 15)
-    map_score = min(20, map_answered * 7)
-    breakdown["🗺️ Карта талдауы"] = (map_score, 20)
-
-    # Рефлексия + қорытынды (25 балл)
-    refl_answered = sum(1 for k in ["refl1","refl2","refl3","refl4"]
-                        if len(st.session_state.get(k,"").strip()) > 15)
-    refl_score = min(25, refl_answered * 6)
-    breakdown["✍️ Қорытынды + рефлексия"] = (refl_score, 25)
-
-    total_score = sum(v[0] for v in breakdown.values())
-
-    col_score, col_breakdown = st.columns([1, 2])
-    with col_score:
-        grade = "A (Өте жақсы)" if total_score >= 85 else \
-                "B (Жақсы)"     if total_score >= 70 else \
-                "C (Орташа)"    if total_score >= 55 else "D (Толтырыңыз)"
-        st.markdown(f"""
-        <div class="score-block">
-            <div style="font-size:13px; margin-bottom:4px; opacity:.7;">Жинаған балл</div>
-            <div class="big">{total_score}</div>
-            <div style="font-size:13px; opacity:.7;">/ 100</div>
-            <div style="margin-top:12px; font-size:16px; color:#A8D5BA;">{grade}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col_breakdown:
-        st.markdown("**Бөлім бойынша балл:**")
-        for crit, (earned, max_pts) in breakdown.items():
-            pct = earned / max_pts if max_pts > 0 else 0
-            color = "normal" if pct >= 0.7 else ("off" if pct < 0.4 else "normal")
-            st.metric(label=crit, value=f"{earned}/{max_pts}", delta=f"{pct*100:.0f}%")
-
-    # ── Нәтижені жүктеп алу ──────────────────────────────────────
-    st.divider()
-    st.markdown("### 💾 Нәтижені жүктеп алу")
-
-    if st.button("📄 Есепті жасау және жүктеу (TXT)", use_container_width=True):
-        report_lines = [
-            "=" * 60,
-            "ИНДУСТРИЯЛЫҚ ҚАЗАҚСТАН — ПРАКТИКАЛЫҚ ЖҰМЫС ЕСЕБІ",
-            "=" * 60,
-            f"Студент    : {student_name or 'Белгісіз'}",
-            f"Топ        : {student_group or '—'}",
-            f"Өңір       : {student_region}",
-            f"Күні       : {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-            "",
-            f"ЖАЛПЫ БАЛЛ : {total_score} / 100  ({grade})",
-            "",
-            "─" * 40,
-            "БӨЛІМ БОЙЫНША БАЛЛ:",
-            "─" * 40,
-        ]
-        for crit, (earned, max_pts) in breakdown.items():
-            report_lines.append(f"  {crit}: {earned}/{max_pts}")
-
-        report_lines += ["", "─" * 40, "ДЕРЕКТЕР КЕСТЕСІ:", "─" * 40]
-        if "df_main" in st.session_state:
-            report_lines.append(st.session_state["df_main"].to_string(index=False))
-
-        report_lines += ["", "─" * 40, "РЕФЛЕКСИЯ:", "─" * 40]
-        for i, k in enumerate(["refl1","refl2","refl3","refl4"], 1):
-            report_lines.append(f"Сұрақ {i}: {st.session_state.get(k,'—')}")
-
-        report_text = "\n".join(report_lines)
-
-        st.download_button(
-            label="⬇️ Есепті жүктеу (.txt)",
-            data=report_text.encode("utf-8"),
-            file_name=f"report_{student_name or 'student'}_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
-            mime="text/plain",
-            use_container_width=True,
-        )
-
-    st.markdown('<div class="warn-box">⚠️ <b>Тапсыру:</b> Есепті жүктеп алып, мұғалімге <b>Google Classroom</b> немесе <b>электрондық пошта</b> арқылы жіберіңіз.</div>', unsafe_allow_html=True)
+    # Мұғалім Word нұсқасы
+    wb=build_word(student_name,student_group,student_region,
+                  total_score,grade,breakdown,df,dict(st.session_state),
+                  st.session_state.get("chart_bytes"))
+    ts=datetime.now().strftime("%Y%m%d_%H%M")
+    sn=(student_name or "student").replace(" ","_")
+    st.download_button("⬇️ Word есеп (мұғалім нұсқасы)",
+        data=wb,file_name=f"teacher_{sn}_{ts}.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        use_container_width=True)
