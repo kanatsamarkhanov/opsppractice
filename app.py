@@ -8,15 +8,12 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import folium
 from streamlit_folium import st_folium
-import io, smtplib
+import io, smtplib, base64
 from email.mime.multipart import MIMEMultipart
 from email.mime.text      import MIMEText
 from email.mime.base      import MIMEBase
 from email                import encoders
 from datetime             import datetime
-from docx                 import Document
-from docx.shared          import Pt, RGBColor, Inches, Cm
-from docx.enum.text       import WD_ALIGN_PARAGRAPH
 
 st.set_page_config(
     page_title="Индустриялық Қазақстан · Практика",
@@ -239,77 +236,135 @@ def get_grade(s):
 
 
 # ══════════════════════════════════════════════════════════════════
-# WORD ЕСЕП
+# HTML ЕСЕП  (python-docx жоқ — ешқандай сыртқы пакет қажет емес)
+# Word-та ашуға болады: File → Open → файл.html
 # ══════════════════════════════════════════════════════════════════
-def build_word(name, group, region, score, grade, breakdown, df, ss, chart_b):
-    doc = Document()
-    sec = doc.sections[0]
-    sec.page_width = Cm(21); sec.page_height = Cm(29.7)
-    for a in ("top_margin","bottom_margin","left_margin","right_margin"):
-        setattr(sec, a, Cm(2))
+def build_html_report(name, group, region, score, grade, breakdown, df, ss, chart_b):
+    """Generates a self-contained HTML report with embedded chart."""
 
-    p = doc.add_paragraph()
-    r = p.add_run("ИНДУСТРИЯЛЫҚ ҚАЗАҚСТАН\nПрактикалық жұмыс есебі")
-    r.font.size=Pt(18); r.bold=True; r.font.color.rgb=RGBColor(0x1B,0x2A,0x4A)
-    p.alignment=WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph()
-
-    t=doc.add_table(rows=0,cols=2); t.style="Table Grid"
-    for k,v in [("Студент",name or "—"),("Топ",group or "—"),("Өңір",region),
-                ("Күн",datetime.now().strftime("%Y-%m-%d %H:%M")),
-                ("Жалпы балл",f"{score}/100"),("Баға",grade)]:
-        row=t.add_row(); row.cells[0].text=k; row.cells[1].text=v
-        row.cells[0].paragraphs[0].runs[0].bold=True
-    doc.add_paragraph()
-
-    doc.add_paragraph().add_run("1. Балл кестесі").bold=True
-    t2=doc.add_table(rows=1,cols=3); t2.style="Table Grid"
-    for i,h in enumerate(["Бөлім","Балл","Макс"]):
-        t2.rows[0].cells[i].text=h; t2.rows[0].cells[i].paragraphs[0].runs[0].bold=True
-    for k,(e,m) in breakdown.items():
-        row=t2.add_row(); row.cells[0].text=k
-        row.cells[1].text=str(e); row.cells[2].text=str(m)
-    doc.add_paragraph()
-
-    doc.add_paragraph().add_run("2. Деректер кестесі").bold=True
-    if df is not None and not df.empty:
-        cols=["Кәсіпорын","Сала","Өнім_мың_т","Жұмысшы_мың","Ластану_коэф","Экожүктеме"]
-        cols=[c for c in cols if c in df.columns]
-        dt=doc.add_table(rows=1,cols=len(cols)); dt.style="Table Grid"
-        for i,c in enumerate(cols):
-            dt.rows[0].cells[i].text=c; dt.rows[0].cells[i].paragraphs[0].runs[0].bold=True
-        for _,row in df[cols].iterrows():
-            tr=dt.add_row()
-            for i,v in enumerate(row): tr.cells[i].text=str(v)
-    doc.add_paragraph()
-
-    doc.add_paragraph().add_run("3. Диаграммалар").bold=True
+    # Диаграмманы base64-ке айналдыру
+    chart_tag = ""
     if chart_b:
-        doc.add_picture(io.BytesIO(chart_b), width=Inches(5.8))
-    doc.add_paragraph()
+        b64 = base64.b64encode(chart_b).decode("utf-8")
+        chart_tag = f'<img src="data:image/png;base64,{b64}" style="max-width:100%;margin:16px 0;border:1px solid #dee2e6;border-radius:6px" />'
 
-    doc.add_paragraph().add_run("4. Талдау жауаптары").bold=True
-    for lbl,key in [
-        ("Диаграмма 1 — Экожүктеме","chart_q1"),
-        ("Диаграмма 2 — Еңбек өнімділігі","chart_q2"),
-        ("Диаграмма 3 — Scatter заңдылығы","chart_q3"),
-        ("Диаграмма 4 — Педагогикалық идея","chart_q4"),
-        ("Карта 1 — Орналасу факторы","map_q1"),
-        ("Карта 2 — Мектепте пайдалану","map_q2"),
-        ("Карта 3 — Экологиялық салдар","map_q3"),
-        ("Рефлексия 1","refl1"),("Рефлексия 2","refl2"),
-        ("Рефлексия 3","refl3"),("Рефлексия 4","refl4"),
-    ]:
-        p=doc.add_paragraph(); p.add_run(f"▶ {lbl}: ").bold=True
-        a=doc.add_paragraph(ss.get(key,"") or "(жауап жоқ)")
-        a.paragraph_format.left_indent=Cm(1)
+    # Студент ақпараты кестесі
+    info_rows = "".join(
+        f"<tr><td><b>{k}</b></td><td>{v}</td></tr>"
+        for k, v in [
+            ("Студент",    name  or "—"),
+            ("Топ",        group or "—"),
+            ("Өңір",       region),
+            ("Күні",       datetime.now().strftime("%Y-%m-%d %H:%M")),
+            ("Жалпы балл", f"<b>{score}/100</b>"),
+            ("Баға",       f"<b>{grade}</b>"),
+        ]
+    )
 
-    fp=doc.add_paragraph(f"Автоматты жасалды · {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    fp.alignment=WD_ALIGN_PARAGRAPH.CENTER
-    fp.runs[0].font.size=Pt(8); fp.runs[0].font.color.rgb=RGBColor(0x90,0x9A,0xA8)
+    # Балл кестесі
+    score_rows = ""
+    for crit, (earned, max_pts) in breakdown.items():
+        pct  = earned / max_pts * 100 if max_pts else 0
+        clr  = "#28a745" if pct >= 70 else "#ffc107" if pct >= 40 else "#dc3545"
+        bar  = f'<div style="height:8px;width:{pct:.0f}%;background:{clr};border-radius:4px"></div>'
+        score_rows += (f"<tr><td>{crit}</td>"
+                       f"<td style='color:{clr};font-weight:bold'>{earned}/{max_pts}</td>"
+                       f"<td>{pct:.0f}%&nbsp;{bar}</td></tr>")
 
-    buf=io.BytesIO(); doc.save(buf); buf.seek(0)
-    return buf.read()
+    # Деректер кестесі
+    data_cols = ["Кәсіпорын","Сала","Өнім_мың_т","Жұмысшы_мың","Ластану_коэф","Экожүктеме"]
+    data_header = "".join(f"<th>{c}</th>" for c in data_cols if df is not None and c in df.columns)
+    data_rows   = ""
+    if df is not None and not df.empty:
+        cols = [c for c in data_cols if c in df.columns]
+        for _, row in df[cols].iterrows():
+            data_rows += "<tr>" + "".join(f"<td>{v}</td>" for v in row) + "</tr>"
+
+    # Жауаптар
+    qa_items = [
+        ("📈 Диаграмма 1 — Экожүктеме",          ss.get("chart_q1","")),
+        ("📈 Диаграмма 2 — Еңбек өнімділігі",    ss.get("chart_q2","")),
+        ("📈 Диаграмма 3 — Scatter заңдылығы",   ss.get("chart_q3","")),
+        ("📈 Диаграмма 4 — Педагогикалық идея",  ss.get("chart_q4","")),
+        ("🗺️ Карта 1 — Орналасу факторы",        ss.get("map_q1","")),
+        ("🗺️ Карта 2 — Мектепте пайдалану",     ss.get("map_q2","")),
+        ("🗺️ Карта 3 — Экологиялық салдар",     ss.get("map_q3","")),
+        ("💭 Рефлексия 1",                        ss.get("refl1","")),
+        ("💭 Рефлексия 2",                        ss.get("refl2","")),
+        ("💭 Рефлексия 3",                        ss.get("refl3","")),
+        ("💭 Рефлексия 4",                        ss.get("refl4","")),
+    ]
+    qa_rows = "".join(
+        f"<tr><td><b>{q}</b></td>"
+        f"<td>{'<em style=\"color:#aaa\">Жауап берілмеген</em>' if not a.strip() else a}</td></tr>"
+        for q, a in qa_items
+    )
+
+    html = f"""<!DOCTYPE html>
+<html lang="kk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Практикалық жұмыс — {name or 'Студент'}</title>
+<style>
+  *{{box-sizing:border-box;margin:0;padding:0}}
+  body{{font-family:'Segoe UI',Arial,sans-serif;max-width:960px;margin:0 auto;
+       padding:24px;color:#1B2A4A;background:#fff;font-size:14px}}
+  h1{{background:linear-gradient(135deg,#1B2A4A,#2C4A7C);color:#fff;
+      padding:22px 28px;border-radius:10px;margin-bottom:20px;font-size:22px}}
+  h1 span{{color:#FFD166}}
+  h2{{color:#1B2A4A;border-bottom:2px solid #1B2A4A;padding-bottom:6px;
+      margin:28px 0 14px;font-size:16px}}
+  table{{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:13px}}
+  th{{background:#1B2A4A;color:#FFD166;padding:10px 12px;text-align:left;font-weight:600}}
+  td{{padding:9px 12px;border-bottom:1px solid #dee2e6;vertical-align:top}}
+  tr:nth-child(even){{background:#f8f9fa}}
+  .score-box{{display:inline-block;background:#1B2A4A;color:#fff;
+             padding:20px 32px;border-radius:10px;text-align:center;margin:16px 0}}
+  .score-big{{font-size:52px;font-weight:700;color:#FFD166;line-height:1}}
+  .footer{{font-size:11px;color:#aaa;margin-top:40px;text-align:center;
+           border-top:1px solid #dee2e6;padding-top:16px}}
+  @media print{{body{{max-width:100%;padding:0}}}}
+</style>
+</head>
+<body>
+<h1>🏭 ИНДУСТРИЯЛЫҚ ҚАЗАҚСТАН<br>
+    <span>Практикалық жұмыс есебі</span></h1>
+
+<table><tr><th>Параметр</th><th>Мән</th></tr>{info_rows}</table>
+
+<div class="score-box">
+  <div class="score-big">{score}</div>
+  <div style="font-size:13px;opacity:.8;margin-top:4px">/ 100 баллдан</div>
+  <div style="margin-top:10px;font-size:15px;color:#A8D5BA">{grade}</div>
+</div>
+
+<h2>1. Балл кестесі</h2>
+<table>
+<tr><th>Бөлім</th><th>Балл</th><th>Пайыз</th></tr>
+{score_rows}
+</table>
+
+<h2>2. Деректер кестесі</h2>
+<table><tr>{data_header}</tr>{data_rows}</table>
+
+<h2>3. Диаграммалар</h2>
+{chart_tag if chart_tag else '<p style="color:#aaa">Диаграмма жоқ (③ бөлімін ашыңыз).</p>'}
+
+<h2>4. Талдау жауаптары</h2>
+<table>
+<tr><th style="width:35%">Сұрақ</th><th>Жауап</th></tr>
+{qa_rows}
+</table>
+
+<div class="footer">
+  Автоматты жасалды · {datetime.now().strftime('%Y-%m-%d %H:%M')} ·
+  Индустриялық Қазақстан практика жүйесі · 2-курс, географиялық педагогика
+</div>
+</body>
+</html>"""
+
+    return html.encode("utf-8")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -632,7 +687,7 @@ with tab5:
             st.metric(crit,f"{e}/{m}",f"{e/m*100:.0f}%")
 
     st.divider()
-    st.markdown("### 📄 Word есеп + Email")
+    st.markdown("### 📄 HTML есеп + Email")
     if not student_name:
         st.markdown('<div class="warn-box">⚠️ Sidebar-дан аты-жөніңізді толтырыңыз!</div>',unsafe_allow_html=True)
     else:
@@ -640,15 +695,15 @@ with tab5:
         chart_b = st.session_state.get("chart_bytes")
         ts=datetime.now().strftime("%Y%m%d_%H%M")
         sn=student_name.replace(" ","_")
-        fname=f"report_{sn}_{ts}.docx"
-        word_b=build_word(student_name,student_group,student_region,
+        fname=f"report_{sn}_{ts}.html"
+        word_b=build_html_report(student_name,student_group,student_region,
                           total_score,grade,breakdown,
                           df_rep,dict(st.session_state),chart_b)
         cd,cs=st.columns(2)
         with cd:
-            st.download_button("⬇️ Word есепті жүктеп алу",
+            st.download_button("⬇️ HTML есепті жүктеп алу",
                 data=word_b,file_name=fname,
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                mime="text/html",
                 use_container_width=True)
         with cs:
             if st.button(f"📧 Мұғалімге жіберу → {TEACHER_EMAIL}",
@@ -659,7 +714,7 @@ with tab5:
                 else:  st.markdown(f'<div class="warn-box">{msg}</div>',unsafe_allow_html=True)
 
         st.markdown(f"""<div class="tip-box">
-        📌 1. ⬇️ Word жүктеп алыңыз (сақтық) &nbsp;
+        📌 1. ⬇️ HTML жүктеп алыңыз (браузерде немесе Word-та ашыңыз) &nbsp;
         2. 📧 «Мұғалімге жіберу» → есеп автоматты <b>{TEACHER_EMAIL}</b> мекенжайына жіберіледі
         </div>""",unsafe_allow_html=True)
 
@@ -715,12 +770,12 @@ with tab_t:
         st.dataframe(df,use_container_width=True)
 
     # Мұғалім Word нұсқасы
-    wb=build_word(student_name,student_group,student_region,
+    wb=build_html_report(student_name,student_group,student_region,
                   total_score,grade,breakdown,df,dict(st.session_state),
                   st.session_state.get("chart_bytes"))
     ts=datetime.now().strftime("%Y%m%d_%H%M")
     sn=(student_name or "student").replace(" ","_")
-    st.download_button("⬇️ Word есеп (мұғалім нұсқасы)",
-        data=wb,file_name=f"teacher_{sn}_{ts}.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    st.download_button("⬇️ HTML есеп (мұғалім нұсқасы)",
+        data=wb,file_name=f"teacher_{sn}_{ts}.html",
+        mime="text/html",
         use_container_width=True)
